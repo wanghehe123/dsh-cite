@@ -1,0 +1,24 @@
+# dsh-sessions bundle layer: mounts the official cross-session reference
+# service and this plugin's host/browser halves.
+
+- insert:
+    # Official semantic layer: bounded, read-only cross-session snapshots.
+    - id: session-reference
+      name: '@deepseek-ai/dsh-session-reference'
+      config:
+        maxReferences: 3
+        candidateLimit: 50
+        maxReferenceBytes: 65536
+
+    # Host half registers /dsh-sessions routes + the agent/pre-step adapter.
+    # The same package declares dsh.client, so the web loader serves the
+    # browser half from this row automatically.
+    - id: session-bridge
+      name: '@wishp3/dsh-sessions'
+      config:
+        # Reference universe: same workspace (default) or every visible session.
+        scope: workspace
+        allowBareSessionIds: true
+        allowPlainTitleMentions: true
+        candidateLimit: 50
+        failureMode: passthrough
