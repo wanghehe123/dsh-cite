@@ -32,7 +32,11 @@ DSH 插件通过 profile 安装、通过 bundle patch 参与组合，详见官�
 
 ## 相关开源项目
 
-README 的组织方式参考 [DeepSeek Harness Desktop](https://github.com/anywhere-labs/deepseek-harness-desktop)（为 DSH 生态打造的桌面端体验，官网 [dshdesktop.cn](https://dshdesktop.cn)）。
+README 的组织方式参考 [DeepSeek Harness Desktop](https://github.com/anywhere-labs/deepseek-harness-desktop)。该仓库 About 原文：
+
+> 为 DeepSeek Harness (DSH) 生态打造的现代化桌面端体验
+>
+> 🔗 [dshdesktop.cn](https://dshdesktop.cn)
 
 | 项目 | 简介 | 链接 |
 | --- | --- | --- |
@@ -40,15 +44,15 @@ README 的组织方式参考 [DeepSeek Harness Desktop](https://github.com/anywh
 | DeepSeek Harness Desktop | DSH 生态的桌面端体验。 | [GitHub](https://github.com/anywhere-labs/deepseek-harness-desktop) · [官网](https://dshdesktop.cn) |
 | Agents-Anywhere | 从手机远程控制电脑上的 Coding Agent。 | [GitHub](https://github.com/anywhere-labs/Agents-Anywhere) |
 
-Desktop 仓库 About 里的 topic 是标签，不是独立仓库，按 GitHub topic 页收录如下：
+About 里的 topic 是标签，不是独立仓库；以下按 About 显示顺序收录到 GitHub topic 页：
 
 | 标签 | 链接 |
 | --- | --- |
 | `deepseek` | [GitHub](https://github.com/topics/deepseek) |
 | `deepseek-harness` | [GitHub](https://github.com/topics/deepseek-harness) |
-| `dsh-plugin` | [GitHub](https://github.com/topics/dsh-plugin) |
 | `desktop` | [GitHub](https://github.com/topics/desktop) |
 | `dsh` | [GitHub](https://github.com/topics/dsh) |
+| `dsh-plugin` | [GitHub](https://github.com/topics/dsh-plugin) |
 | `dsh-plugin-desktop` | [GitHub](https://github.com/topics/dsh-plugin-desktop) |
 
 ## 工作区界面
