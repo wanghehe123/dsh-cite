@@ -24,6 +24,10 @@ bundle patch 做两件事：`disabled: true` 关掉内置 `ui-workspace`，并�
 
 复制走 `copyTextToClipboard()`：先在点击手势内同步 `document.execCommand('copy')`，失败再回退 `navigator.clipboard.writeText()`，任一后端接受即成功。结果 toast 在行组件本地渲染，4 秒后自动消失，zh/en 文案各一套。
 
+| 会话行 `⋯` 菜单 | 复制成功 toast |
+| --- | --- |
+| <img src="docs/screenshots/03-copy-session-id.png" alt="会话行菜单里的复制会话 ID" width="400"> | <img src="docs/screenshots/04-copy-toast.png" alt="复制会话 ID 成功 toast" width="400"> |
+
 dsh 升级工作区 UI 后需同步 vendor 目录；`upstream/` 里的槽位补丁合并进上游后，可删除 vendor 并恢复内置 `ui-workspace`。
 
 ## 配置
@@ -31,6 +35,8 @@ dsh 升级工作区 UI 后需同步 vendor 目录；`upstream/` 里的槽位补�
 Web UI：设置 → 插件 → 插件配置 → **会话引用**。卡片默认折叠，展开后可在「仅当前工作区 / 所有可见会话」之间切换，保存即写入宿主 settings。
 
 api-proxy 的 settings 命名空间白名单不覆盖第三方包，因此卡片不注册官方 settings 槽，而是走本包自己的 `GET/POST /dsh-sessions/settings`；设置节持久化到 dsh `settings.yaml` 的 `dsh-sessions:` 段。
+
+<img src="docs/screenshots/01-plugin-config.png" alt="插件配置页：内置「终端」卡与「会话引用」卡展开后的样式" width="520">
 
 | 键 | 默认 | 作用 |
 |---|---|---|
@@ -43,6 +49,10 @@ api-proxy 的 settings 命名空间白名单不覆盖第三方包，因此卡片
 `scope` 在卡片上改；其余键通过 `cordis.patch.yml` 或 profile 覆盖。
 
 ## 工作方式
+
+新会话输入 `@` 时的候选菜单（浏览器半）：
+
+<img src="docs/screenshots/02-mention-menu.png" alt="输入 @ 后出现的会话候选菜单" width="560">
 
 1. `@` 触发源候选来自 `POST /dsh-sessions/candidates`；pick 插入 chip，不透明 ref 携带目标会话、来源会话、label 与规范 mention 文本。
 2. 提交时 codec serialize 调 `/dsh-sessions/preflight`：宿主按当前 scope 过滤后完整执行一次 `prepare()`。失败会中止提交并保留草稿；成功才输出规范 `@[label](dsh-session:…)`。
