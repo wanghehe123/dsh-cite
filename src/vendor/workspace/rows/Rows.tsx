@@ -5,12 +5,12 @@
  * except workspace Rename/Delete and session Rename/Fork/Archive; the session
  * and workspace hover cards are suppressed while a menu is open.
  */
-import { useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
-  HoverCard, IconArchiveOutline20, IconBranchOutline16, IconCopyOutline16, IconEditOutline16,
-  IconEllipsisOutline16, IconFolderClose16, IconFolderOpen16, IconPlusOutline16,
-  IconTrashOutline16, IconTriangleRightFill14, Menu, StateDot,
+  HoverCard, IconArchiveOutline20, IconBranchOutline16, IconCheckOutline16, IconCopyOutline16,
+  IconEditOutline16, IconEllipsisOutline16, IconFolderClose16, IconFolderOpen16, IconPlusOutline16,
+  IconTrashOutline16, IconTriangleRightFill14, IconWarningOutline16, Menu, StateDot, Toast,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { WorkspaceBrowserProps } from '../contract/slots.ts'
@@ -377,6 +377,17 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
   const primaryStatus = statuses[0]
   const showStatus = primaryStatus.state !== 'done' || row.completed
   const [menuOpen, setMenuOpen] = useState(false)
+  const [toast, setToast] = useState<{ seq: number; text: string; icon: 'success' | 'failure' } | null>(null)
+  const toastSeq = useRef(0)
+  const dismissToast = useCallback(() => { setToast(null) }, [])
+  const showToast = useCallback((icon: 'success' | 'failure') => {
+    toastSeq.current += 1
+    setToast({
+      seq: toastSeq.current,
+      text: icon === 'success' ? t('copy.success') : t('copy.failure'),
+      icon,
+    })
+  }, [t])
   // Archive hides the row through the registry-global archive set and never
   // touches the session log, so it is not styled as destructive and needs no
   // confirmation dialog.
@@ -445,11 +456,9 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
             items={sessionMenuItems}
             onSelect={(id) => {
               if (id === 'copy-session-id') {
-                // Close only after the write is accepted; a rejected write
-                // keeps the menu open so the user can retry.
                 void onCopySessionId(node.id).then((accepted) => {
-                  if (accepted) setMenuOpen(false)
-                  else console.error('[dsh-sessions] clipboard rejected the session id write')
+                  setMenuOpen(false)
+                  showToast(accepted ? 'success' : 'failure')
                 })
                 return
               }
@@ -476,13 +485,23 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
     </div>
   )
   return (
-    <HoverCard
-      anchor={ownRow}
-      content={<SessionHoverContent node={node} now={now} t={t} />}
-      disabled={menuOpen || drag?.active === true}
-      copyText={row.blank ? undefined : row.title}
-      copyLabel={t('copy')}
-      copiedLabel={t('hover.copied')}
-    />
+    <>
+      {toast !== null && (
+        <Toast
+          key={toast.seq}
+          text={toast.text}
+          icon={toast.icon === 'success' ? <IconCheckOutline16 /> : <IconWarningOutline16 />}
+          onDone={dismissToast}
+        />
+      )}
+      <HoverCard
+        anchor={ownRow}
+        content={<SessionHoverContent node={node} now={now} t={t} />}
+        disabled={menuOpen || drag?.active === true}
+        copyText={row.blank ? undefined : row.title}
+        copyLabel={t('copy')}
+        copiedLabel={t('hover.copied')}
+      />
+    </>
   )
 }
