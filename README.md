@@ -18,18 +18,11 @@ dsh plugin --profile web add @wishp3/dsh-sessions
 dsh --profile web
 ```
 
-## 前置条件：上游补丁
+## 工作区界面
 
-复制会话 ID 的菜单项需要一个 dsh 上游扩展点（`sidebar.workspaces.session-menu` slot）。补丁位于本仓库：
+“复制会话 ID”不依赖 dsh 补丁：本插件在浏览器半 **vendor 了 `ui-workspace` 的完整工作区浏览器**，并在 bundle patch 中禁用内置行（`ui-workspace`），在会话 `⋯` 菜单里加入“复制会话 ID”。`upstream/` 目录保留同一扩展点的上游补丁，供 dsh 合并后切回内置实现。
 
-```sh
-git apply upstream/0001-web-session-row-menu-slot.patch
-# 重新构建并运行 catalog 生成与 GUI 测试
-pnpm run gen-client-catalog
-pnpm run test:gui
-```
-
-未打补丁时，`@` 引用与裸 id 引用照常工作，只有菜单动作不出现。
+## 配置
 
 ## 配置
 
@@ -69,7 +62,7 @@ Web UI：**设置 → 插件 → 插件配置 → 会话引用**，可直接切�
 
 ## Known Limitations and Deferred Work
 
-- 复制会话 ID 依赖上游 `sidebar.workspaces.session-menu` slot；未合并/未打补丁时该动作静默缺席。
+- 工作区浏览器来自 vendor 副本并禁用了内置 `ui-workspace`；dsh 升级工作区 UI 后需同步 vendor 目录（`upstream/` 补丁被官方合并后可切回内置实现）。
 - 手打 `@标题` 只按标题精确匹配；重名标题不自动解析，请使用菜单 chip 或 id。
 - preflight 与 pre-step 之间存在源会话被删除/损坏的竞态窗口，默认 `passthrough` 保留可读消息并记录错误，`reject` 可改为拒绝该步。
 - 引用不是实时链接：快照在发送时冻结，来源会话后续变化不影响本条消息。

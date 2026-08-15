@@ -10,6 +10,7 @@
     "src/css-modules.d.ts"
   ],
   "exclude": [
-    "src/client/**/*"
+    "src/client/**/*",
+    "src/vendor/**/*"
   ]
 }

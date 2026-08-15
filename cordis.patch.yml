@@ -1,5 +1,11 @@
 # dsh-sessions bundle layer: mounts the official cross-session reference
-# service and this plugin's host/browser halves.
+# service, disables the shipped workspace browser, and installs this plugin's
+# host/browser halves.
+
+# The plugin's browser half vendors the workspace browser so it can add
+# "Copy session ID" to the session row menu without an upstream slot patch.
+- id: ui-workspace
+  disabled: true
 
 - insert:
     # Official semantic layer: bounded, read-only cross-session snapshots.

@@ -1,7 +1,7 @@
 /**
- * dsh-sessions browser half: the `@session` input-trigger source, the
- * copy-session-id row in each workspace session `...` menu, and the plugin
- * configuration card on the Web Plugins settings page.
+ * dsh-sessions browser half: vendored workspace surface with copy-session-id,
+ * the `@session` input-trigger source, and the plugin configuration card on
+ * the Web Plugins settings page.
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -11,33 +11,24 @@ import { en, NS, zh } from './locales.ts'
 import { getScopeSetting, setScopeSetting } from './rpc.ts'
 import { ScopeCard, type ScopeCardInjected } from './ScopeCard.tsx'
 import { createSessionMentionSource } from './session-mention-source.ts'
-import { SessionMenuAction } from './SessionMenuAction.tsx'
-import type {} from './slot-map.ts'
+import { registerWorkspaceSurface } from '../vendor/workspace/index.ts'
 
-/** Required client services: locale, session list feed, triggers, and slots. */
-export const inject = ['sessions', 'locale', 'inputTriggers', 'slots']
+/** Required client services: locale, session/workspace feeds, triggers, slots. */
+export const inject = ['sessions', 'workspaces', 'locale', 'inputTriggers', 'slots']
 
 /**
- * Register the session mention source, row-menu copy action, and scope card.
+ * Register the vendored workspace surface, session mention source, and
+ * reference-scope configuration card.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-sessions: dictionaries')
+  registerWorkspaceSurface(ctx)
 
   ctx.effect(() => {
     const unregister = ctx.inputTriggers.registerSource(createSessionMentionSource(ctx))
     return () => { unregister() }
   }, 'dsh-sessions: @ source')
-
-  ctx.slots.inject(
-    'sidebar.workspaces.session-menu',
-    () => ctx.slots.register({
-      name: 'sidebar.workspaces.session-menu',
-      id: 'copy-session-id',
-      order: 50,
-      locale: NS,
-    }, SessionMenuAction),
-  )
 
   ctx.slots.inject(
     'settings.plugin.item',
