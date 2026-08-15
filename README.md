@@ -1,6 +1,6 @@
 # dsh-sessions
 
-`dsh-sessions` 是 dsh Web 插件：把其他会话作为有界、只读、带来源的快照引用进当前会话。浏览器半提供 `@` 触发源、引用范围设置卡片，并 vendor `ui-workspace` 以在会话行 `⋯` 菜单加入「复制会话 ID」；宿主半通过 `agent/pre-step` 解析 mention，并调用官方 `ctx.sessionReferenceResolver.prepare()` 产出快照。
+`dsh-sessions` 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）的 Web 插件：把其他会话作为有界、只读、带来源的快照引用进当前会话。浏览器半提供 `@` 触发源、引用范围设置卡片，并 vendor `ui-workspace` 以在会话行 `⋯` 菜单加入「复制会话 ID」；宿主半通过 `agent/pre-step` 解析 mention，并调用官方 `ctx.sessionReferenceResolver.prepare()` 产出快照。
 
 ## 功能
 
@@ -17,6 +17,18 @@ dsh --profile web
 ```
 
 bundle patch 做两件事：`disabled: true` 关掉内置 `ui-workspace`，并插入 `session-reference` 与 `session-bridge` 两行。前者是官方快照语义层；后者同时声明 `dsh.bundle` 与 `dsh.client`，web loader 从同一行自动提供浏览器半。
+
+DSH 插件通过 profile 安装、通过 bundle patch 参与组合，详见官方[插件管理文档](https://github.com/deepseek-ai/deepseek-harness/blob/master/apps/cli/reference/README.md#plugin-management)和[架构说明](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.md)。
+
+## 与官方项目的关系
+
+本项目是基于 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 构建的社区插件，不修改官方运行时：
+
+- 快照语义完全复用官方 `@deepseek-ai/dsh-session-reference` 服务，本包只做 UI 触发源、路由与 `agent/pre-step` 接线。
+- 浏览器半通过官方 `ctx.inputTriggers`、`settings.plugin.item`、`slots` 等服务接入 Web UI。
+- `upstream/` 保留一份提交给官方仓库的工作区菜单槽位补丁；补丁合并后，本包会删除 vendor 并恢复内置 `ui-workspace`。
+
+需要命令行运行或参与核心功能开发，请以官方仓库为准。
 
 ## 工作区界面
 
@@ -113,3 +125,9 @@ npm publish
 ```
 
 `package.json` 已声明 `publishConfig.access: public`，scope 为 `@wishp3`。
+
+## License
+
+[MIT](LICENSE)。
+
+> 本项目是基于 DeepSeek Harness 构建的社区插件，并非 DeepSeek 官方产品。
