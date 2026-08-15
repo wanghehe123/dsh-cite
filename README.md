@@ -1,6 +1,6 @@
-# @wishp3/dsh-sessions
+# dsh-sessions
 
-`@wishp3/dsh-sessions` 是 dsh Web 插件：把其他会话作为有界、只读、带来源的快照引用进当前会话。浏览器半提供 `@` 触发源、引用范围设置卡片，并 vendor `ui-workspace` 以在会话行 `⋯` 菜单加入「复制会话 ID」；宿主半通过 `agent/pre-step` 解析 mention，并调用官方 `ctx.sessionReferenceResolver.prepare()` 产出快照。
+`dsh-sessions` 是 dsh Web 插件：把其他会话作为有界、只读、带来源的快照引用进当前会话。浏览器半提供 `@` 触发源、引用范围设置卡片，并 vendor `ui-workspace` 以在会话行 `⋯` 菜单加入「复制会话 ID」；宿主半通过 `agent/pre-step` 解析 mention，并调用官方 `ctx.sessionReferenceResolver.prepare()` 产出快照。
 
 ## 功能
 
