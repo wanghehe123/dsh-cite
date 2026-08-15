@@ -1,111 +1,219 @@
-/* Plugin-configuration card: collapsible card on the settings surface. */
+/* Plugin-configuration card: mirrors the built-in plugin-card chrome so the
+   reference-scope card matches the shipped Shell / Agent loop / Web search
+   cards on the Plugins settings page. */
 
 .card {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--dsw-alias-border-l1);
+  list-style: none;
+  border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 12px;
-  background: var(--dsw-alias-bg-layer-1);
+  background: var(--dsw-alias-bg-layer-3);
+  transition: border-color 0.16s, background 0.16s;
+}
+
+.card:hover {
+  border-color: var(--dsw-alias-label-dimmed);
+}
+
+/* An open card reads as the one being worked on, not merely taller. */
+.cardOpen {
+  background: var(--dsw-alias-bg-layer-2);
+  border-color: var(--dsw-alias-label-dimmed);
 }
 
 .header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
   width: 100%;
-  padding: 16px;
+  appearance: none;
   border: 0;
-  background: transparent;
-  color: var(--dsw-alias-label-primary);
+  background: none;
+  font: inherit;
+  color: inherit;
   text-align: left;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
 }
 
-.header:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+.header:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: -2px;
 }
 
-.chevron {
-  width: 16px;
-  color: var(--dsw-alias-label-secondary);
-  font-size: 12px;
-  line-height: 1;
-  transition: transform 0.15s ease;
-}
-
-.header[aria-expanded='true'] .chevron {
-  transform: rotate(90deg);
-}
-
-.title {
-  margin: 0;
-  color: var(--dsw-alias-label-primary);
-  font-size: 16px;
-  line-height: 24px;
-}
-
-.body {
+/* Name over description: the description is what tells two plugins apart, so
+   it gets its own line rather than trailing the name. */
+.headText {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 0 16px 16px;
+  gap: 4px;
+}
+
+.name {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--dsw-alias-label-primary);
 }
 
 .description {
-  margin: 0;
-  color: var(--dsw-alias-label-secondary);
   font-size: 13px;
-  line-height: 20px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-tertiary);
 }
 
-.unavailable {
-  margin: 0;
+.chevron {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 0.16s;
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+.body {
+  border-top: 1px solid var(--dsw-alias-border-l2);
+  margin: 0 16px;
+  padding-bottom: 8px;
+}
+
+/* Carried on the header so a collapsed card still says it holds edits. */
+.pending {
+  flex: none;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  line-height: 17px;
+  font-weight: 500;
+  white-space: nowrap;
+  background: var(--dsw-alias-bg-module-platform);
   color: var(--dsw-alias-label-secondary);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 0;
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
-  line-height: 20px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-primary);
 }
 
 .options {
   display: flex;
-  flex-direction: column;
   gap: 8px;
 }
 
 .option {
+  flex: 1;
+  min-width: 0;
+  appearance: none;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  width: 100%;
-  padding: 10px 12px;
+  padding: 9px 12px;
   border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 10px;
-  background: transparent;
-  color: var(--dsw-alias-label-primary);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3);
+  font: inherit;
   text-align: left;
   cursor: pointer;
 }
 
 .option:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  border-color: var(--dsw-alias-label-dimmed);
 }
 
 .option[aria-checked='true'] {
-  border-color: var(--dsw-alias-border-inverted);
-  background: var(--dsw-alias-interactive-bg-hover-accent);
+  border-color: var(--dsw-alias-brand-primary);
+}
+
+.option:focus-visible {
+  outline: none;
+  border-color: var(--dsw-alias-brand-primary);
 }
 
 .option:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
+  cursor: default;
 }
 
 .optionTitle {
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
 }
 
 .optionHint {
-  color: var(--dsw-alias-label-secondary);
   font-size: 12px;
   line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+.failed {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsw-alias-label-error);
+}
+
+.discard,
+.save {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 5px 14px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.discard {
+  border-color: var(--dsw-alias-border-l2);
+  background: none;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.discard:hover:not(:disabled) {
+  color: var(--dsw-alias-label-primary);
+  border-color: var(--dsw-alias-label-dimmed);
+}
+
+.save {
+  background: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-bg-layer-3);
+}
+
+.discard:disabled,
+.save:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.discard:focus-visible,
+.save:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 1px;
 }
