@@ -1056,20 +1056,25 @@ export function apply(ctx: ClientContext): void {
 }
 ```
 
-- [ ] **Step 4: 运行类型检查**
+- [ ] **Step 4: 安装构建所需的 devDependencies**
 
-Run: `npm run typecheck`
+Run: `PATH="/usr/local/bin:$PATH" npm install --save-dev '@types/react-dom@^18.3.1' 'unrun@^0.2.39' --ignore-scripts`
+Expected: PASS — `package.json` 新增 `@types/react-dom` 与 `unrun` devDependency，`package-lock.json` 同步更新。前者提供 `react-dom` 的 `createPortal` 类型；后者是 tsdown 加载 TypeScript 配置文件的 peer dependency。
+
+- [ ] **Step 5: 运行类型检查**
+
+Run: `PATH="/usr/local/bin:$PATH" npm run typecheck`
 Expected: PASS — 客户端 project 编译成功，`QuoteDock` 的 `PropsRuntime<'conversation.input.dock'>` 与 inject face 均通过。
 
-- [ ] **Step 5: 构建客户端 bundle**
+- [ ] **Step 6: 构建客户端 bundle**
 
-Run: `npm run build:client`
-Expected: PASS — tsdown 输出 `lib/client.js`，purity 插件与 CSS Module 内联均无报错。
+Run: `PATH="/usr/local/bin:$PATH" npx -y -p node@22 npm run build:client`
+Expected: PASS — tsdown 输出 `lib/client.js`，purity 插件与 CSS Module 内联均无报错。本步骤用 npx 临时拉取 Node 22，因为 tsdown 需要 `Promise.withResolvers`；本机默认 Node 20.15 会报 `Promise.withResolvers is not a function`。
 
-- [ ] **Step 6: 提交**
+- [ ] **Step 7: 提交**
 
 ```bash
-git add src/client/QuoteDock.tsx src/client/QuoteDock.module.css src/client/index.ts
+git add src/client/QuoteDock.tsx src/client/QuoteDock.module.css src/client/index.ts package.json package-lock.json
 git commit -m "feat(quote): add selection popover and collapsible quote bar"
 ```
 
@@ -1105,9 +1110,9 @@ git commit -m "feat(quote): add selection popover and collapsible quote bar"
 Run:
 
 ```sh
-npm test
-npm run typecheck
-npm run build
+PATH="/usr/local/bin:$PATH" npm test
+PATH="/usr/local/bin:$PATH" npm run typecheck
+PATH="/usr/local/bin:$PATH" npx -y -p node@22 npm run build
 ```
 
 Expected: 三项全部 PASS。
