@@ -115,7 +115,7 @@ export function createSessionMentionSource(ctx: ClientContext): InputTriggerSour
       }
       return {
         insert: {
-          source: 'dsh-sessions',
+          source: 'session',
           ref: buildRef(session.sessionId, view),
           label: view.label,
           clipboardText: `@${view.label}`,
