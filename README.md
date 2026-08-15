@@ -1,6 +1,6 @@
 # dsh-sessions
 
-`dsh-sessions` 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）的 Web 插件：把其他会话作为有界、只读、带来源的快照引用进当前会话。浏览器半提供 `@` 触发源、引用范围设置卡片，并 vendor `ui-workspace` 以在会话行 `⋯` 菜单加入「复制会话 ID」；宿主半通过 `agent/pre-step` 解析 mention，并调用官方 `ctx.sessionReferenceResolver.prepare()` 产出快照。
+`dsh-sessions` 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（DSH）的 Web 插件：把其他会话作为有界、只读、带来源的快照引用进当前会话。浏览器半提供 `@` 触发源、引用范围设置卡片，并 vendor `ui-workspace` 以在会话行 `⋯` 菜单加入「复制会话 ID」；宿主半通过 `agent/pre-step` 解析 mention，并调用官方 `ctx.sessionReferenceResolver.prepare()` 产出快照。此外，它还在当前会话内提供 Codex 式的**选区引用前文**：选中聊天正文即可把这段文本带回输入框，作为 `> ` 引用块发给模型。
 
 ## 功能
 
@@ -8,7 +8,7 @@
 - 裸 session id：消息里的 `session-<uuid>` 直接解析为引用，只在两侧不是 `[A-Za-z0-9_-]` 的位置匹配。
 - 手打 `@标题`：`allowPlainTitleMentions` 打开时，按候选标题做不区分大小写的精确匹配；唯一命中才解析，重名保持普通文本。
 - 复制会话 ID：会话行 `⋯` 菜单新增「复制会话 ID」，复制 dsh 原生 session id；成功与失败都有 toast。
-- 引用前文：在会话正文中选中文本会出现「添加到对话」按钮；引用以输入框 chip + 上方引用条暂存，支持展开/收起与逐条移除，发送时自动序列化为逐行 `> ` 前缀的引用块。
+- 引用前文：在会话正文中选中文本会出现「添加到对话」按钮；引用以输入框 chip + 上方引用条暂存，支持展开/收起与逐条移除，发送时自动序列化为逐行 `> ` 前缀的引用块（详见[引用前文](#引用前文codex-式选区引用)）。
 
 ## 安装
 
@@ -63,11 +63,64 @@ api-proxy 的 settings 命名空间白名单不覆盖第三方包，因此卡片
 
 ## 工作方式
 
-### 引用前文（选区引用）
+### 引用前文（Codex 式选区引用）
 
-1. 选中聊天正文 → 选区上方出现「添加到对话」（输入区与引用条内的选区不触发）。
-2. 点击后文本按 16,000 Unicode 码点截断（超出追加「…（已截断）」），以 `dsh-sessions-quote` chip 插入草稿末尾；输入框上方的 `conversation.input.dock` 引用条直接从 `input.occurrences` 派生，支持展开/收起与移除。
-3. 提交时 codec 把每个 chip 序列化为 `> 引用内容`；`clipboardText` 同为引用块，复制 chip 或草稿重载后语义保持。
+「引用前文」让你像 Codex 一样，把当前会话里已经出现过的文本快速带回输入框，作为上下文发送给模型。它不跨会话，也不读取文件；它处理的是“这段对话里刚才说过/写过的内容”。
+
+#### 使用步骤
+
+1. 在聊天正文中选中一段文本（代码、自然语言均可）。选区上方会出现「添加到对话」浮动按钮。
+2. 点击按钮：
+   - 文本会先 `trim`；
+   - 超过 16,000 Unicode 码点时截断，并追加本地化截断标记（`…（已截断）` / `… (truncated)`）；
+   - 在草稿末尾插入一个 `dsh-sessions-quote` chip，输入框内显示「引用 N」小标签。
+3. 输入框上方出现引用条：
+   - 列出当前草稿中所有引用 chip；
+   - 每条显示「引用 N」、首行预览；
+   - 可展开/收起查看全文；
+   - 可逐条移除（等价于在输入框里删除对应 chip）。
+4. 继续输入正文或直接发送。发送时每个 chip 会被序列化为逐行 `> ` 前缀的 Markdown 引用块，模型收到的就是这段引用内容。
+5. 发送成功后草稿清空，引用条消失；如果引用被移除或手动删除 chip，引用条也会同步消失。
+
+#### 交互与实现细节
+
+- **触发条件**：仅当选区位于会话正文（`[data-conversation-scroll]` 内）且不在输入区/引用条（`[data-composer-seat]` 内）时显示按钮；空选区、输入阶段非 `plain` 时不显示。
+- **插入位置**：统一追加到草稿末尾，插入后自动聚焦输入框并把光标放到末尾。
+- **数据来源**：引用条不维护第二份状态，完全从官方输入机的 `input.occurrences` 过滤 `source === 'dsh-sessions-quote'` 派生。因此撤销、重做、复制、粘贴、手动删除 chip 都与引用条天然同步。
+- **官方管线**：插入走 `slash/input-insert-reference`，移除走 `slash/input-consume-token`（span CAS），由 `InputMachine` 负责占位符、偏移维护与撤销历史。
+- **序列化**：codec 的 `serialize(ref)` 返回逐行 `> ` 前缀；`clipboardText` 同格式。复制 chip 或草稿持久化后重载，引用以引用块文本形式保留。
+- **`@` 菜单无干扰**：`dsh-sessions-quote` 是一个候选恒为空的 `@` 触发源，空分组不会渲染，因此不会污染已有的 `@` 会话候选菜单。
+
+#### 模型看到的内容
+
+模型不会看到 chip，只会看到一段普通 Markdown 引用：
+
+```md
+> 你选中的第一行
+> 你选中的第二行
+```
+
+引用块不带来源标注、不带「引用 N」标题；它就是你选中的原文（可能带截断标记）。这不同于跨会话 `@` 引用的结构化快照：引用前文是纯浏览器端文本组装，日志中也不会额外写入结构化引用元数据。
+
+#### 与跨会话 `@` 引用的区别
+
+| 维度 | 引用前文 | 跨会话 `@` 引用 |
+| --- | --- | --- |
+| 来源范围 | 当前会话聊天正文 | 本机其他历史会话 |
+| 是否经过宿主 `prepare()` | 否，纯浏览器端 | 是，宿主按 scope 过滤并生成快照 |
+| 模型输入形态 | `> ` Markdown 引用块 | 独立的 `## Referenced sessions` 快照 + 可读 `@label` |
+| 来源可追溯性 | 无结构化来源元数据 | 有 session id、label、cwd 等 |
+| 是否受 65536 字节快照限制 | 否，受 16,000 码点单条限制 | 是，受 `maxReferenceBytes` 限制 |
+
+#### 已知限制
+
+- 只支持文本选区；图片、工具调用卡片等非文本内容不会进入引用。
+- 不做 AI 回复中的引用块渲染；模型按普通 Markdown 处理 `>`。
+- 不自动去重，同一段文本可以多次引用。
+- 草稿重载后引用不会还原为 chip，而是保留为 `> ` 引用块文本。
+- 浮层定位依赖上游 UI 的 `data-conversation-scroll` / `data-composer-seat` 结构；上游改版时需要同步。
+
+### 跨会话 `@` 引用
 
 新会话输入 `@` 时的候选菜单（浏览器半）：
 
@@ -103,6 +156,8 @@ api-proxy 的 settings 命名空间白名单不覆盖第三方包，因此卡片
 
 ## 已知限制与暂缓事项
 
+- **引用前文是纯浏览器侧文本组装**：不生成结构化引用元数据，也不在 AI 回复中渲染引用块；发送后日志里就是普通 `> ` 文本。
+- **引用前文单条上限 16,000 Unicode 码点**：超出截断并追加截断标记；只支持文本选区，图片/工具卡片等非文本内容不会进入引用。
 - **vendor 工作区浏览器**：dsh 升级 UI 后需同步 `src/vendor/workspace/`；上游合并 `upstream/` 槽位补丁后可切回内置实现。
 - **手打 `@标题` 只精确匹配**：重名标题不自动解析，请用菜单 chip 或裸 id。
 - **preflight 与 pre-step 之间存在竞态**：源会话可能被删除或损坏；默认 `passthrough` 保留可读文本并记录错误，`reject` 改为拒绝该步。
@@ -117,6 +172,8 @@ npm install --ignore-scripts   # 首次安装，跳过 prepare
 npm run build
 npm test
 ```
+
+> 构建注意：tsdown 需要 Node 22+（内部用到 `Promise.withResolvers`），且加载 TypeScript 配置需要 `unrun`（已加入 devDependencies）。若本机默认 Node 是 20.x，请用 `npx -y -p node@22 npm run build`。
 
 本地调试（在 deepseek-harness 源码 checkout 中）：
 
