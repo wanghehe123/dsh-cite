@@ -1,7 +1,7 @@
 {
   "name": "@wishp3/dsh-sessions",
-  "description": "DeepSeek Harness (DSH) Web UI plugin: cross-session @ mentions, bare session-id references, and copy-session-id row actions",
-  "version": "0.1.0",
+  "description": "DeepSeek Harness (DSH) Web UI plugin: cross-session @ mentions, bare session-id references, copy-session-id row actions, and Codex-style selection quote-to-composer",
+  "version": "0.2.0",
   "publishConfig": {
     "access": "public"
   },
