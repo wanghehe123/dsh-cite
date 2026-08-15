@@ -1,0 +1,281 @@
+diff --git a/.agents/notes/implemented/feature/2026-08-15-session-row-menu-extension-slot.md b/.agents/notes/implemented/feature/2026-08-15-session-row-menu-extension-slot.md
+new file mode 100644
+index 0000000..3b219df
+--- /dev/null
++++ b/.agents/notes/implemented/feature/2026-08-15-session-row-menu-extension-slot.md
+@@ -0,0 +1,26 @@
++# Agent Note: Session row-menu extension slot
++
++Status: implemented
++
++## Problem
++
++The Workspace browser's session `...` menu hardcodes Rename/Fork/Archive. A composed plugin (for example a copy-session-id action) has no additive seat: `sidebar.workspaces` is a `single` slot, so the only existing route is replacing the whole browsing region.
++
++## Decision
++
++`Menu` gains an optional `extra` ReactNode rendered after its ordinary items inside the list box, and `WorkspaceBrowser` declares a root-scoped `list` slot `sidebar.workspaces.session-menu` rendered into that region. Each session row passes the addressed `sessionId`, display `title`, and an `onClose` callback through the slot owner props. Contributions render their own menu cells (primitives stay importable platform modules), so no ReactNode crosses an inject or service boundary.
++
++Slot composition is the only extension path: no new client service, no menu-item registry, no ui-workspace API surface beyond the slot contract.
++
++## Alternatives considered
++
++- **Session row-menu action registry service** — rejected because it would expose ReactNode icons and labels through an inject face or a service snapshot, violating the slot-only composition and JSON-sharing rules in packages/client/AGENTS.md.
++- **Replacing `sidebar.workspaces` wholesale** — rejected because the browsing region is a `single` slot; a plugin re-implementing it must vendor the whole tree and drift with every upstream change.
++- **Reusing the existing footer/list slots** — rejected because the requirement is an item inside the per-row popover, not an extra button in the sidebar foot or row.
++
++## Consequences
++
++- `packages/client/ui-primitives`: `Menu.extra?: ReactNode`, inert when absent.
++- `packages/client/ui-workspace`: new SlotMap entry and declaration, renderSlot threading through `WorkspaceBrowser`/`SessionTree`/`SessionNodeItem`.
++- Empty slot renders nothing; existing menus are byte-identical otherwise.
++- Follow-ups: regenerate `packages/extensions/cordis-client-runner/src/client/slot-catalog.ts` via `pnpm run gen-client-catalog`, update `test:gui` coverage for the new render path, and run `DSH_SNAPSHOT=replay pnpm run test:web` before merge.
+diff --git a/packages/client/ui-primitives/src/Menu.module.css b/packages/client/ui-primitives/src/Menu.module.css
+index 7bc0c5a..b5a755b 100644
+--- a/packages/client/ui-primitives/src/Menu.module.css
++++ b/packages/client/ui-primitives/src/Menu.module.css
+@@ -77,6 +77,13 @@
+   overflow-y: auto;
+ }
+ 
++/* Slotted menu extensions: a neutral column inside the ordinary viewport;
++ * contributed rows own their complete cell styling. */
++.extra {
++  display: flex;
++  flex-direction: column;
++}
++
+ /* Pinned rows below the scroll region; l2 hairline (l1 is near-invisible on
+  * the menu surface) mirrors the .separator spacing. */
+ .footer {
+diff --git a/packages/client/ui-primitives/src/Menu.tsx b/packages/client/ui-primitives/src/Menu.tsx
+index 46c30b8..a83e046 100644
+--- a/packages/client/ui-primitives/src/Menu.tsx
++++ b/packages/client/ui-primitives/src/Menu.tsx
+@@ -85,13 +85,17 @@ const MEASURE_STYLE: CSSProperties = { visibility: 'hidden', left: 0, top: 0 }
+  * scroll/resize; return null to skip placement for that frame.
+  * @param props.footer - rows pinned below the scrolling items area, separated
+  * by a hairline; they stay visible while the items above scroll.
++ * @param props.extra - renderer-provided content rendered after the ordinary
++ * items inside the list box. Slotted menu extensions render their own rows
++ * here; the region stays inert when absent.
+  * @returns anchor wrapper with the conditional list.
+  */
+-export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, onClose, align = 'start', side = 'bottom', portal = false, closeOnPointerLeave = false, dense = false, compact = false, getAnchorRect, footer, className }: {
++export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, onClose, align = 'start', side = 'bottom', portal = false, closeOnPointerLeave = false, dense = false, compact = false, getAnchorRect, footer, extra, className }: {
+   open: boolean
+   anchor: ReactNode
+   items: readonly MenuEntry[]
+   footer?: readonly MenuEntry[]
++  extra?: ReactNode
+   selectedId?: string | undefined
+   selectedIds?: readonly string[] | undefined
+   onSelect: (id: string) => void
+@@ -275,6 +279,7 @@ export function Menu({ open, anchor, items, selectedId, selectedIds, onSelect, o
+     >
+       <div className={css.viewport} role="presentation">
+         {items.map(renderEntry)}
++        {extra !== undefined && <div className={css.extra} role="presentation">{extra}</div>}
+       </div>
+       {footer !== undefined && footer.length > 0 && (
+         <div className={css.footer} role="presentation">
+diff --git a/packages/client/ui-workspace/src/client/WorkspaceBrowser.tsx b/packages/client/ui-workspace/src/client/WorkspaceBrowser.tsx
+index d0f6835..30237c0 100644
+--- a/packages/client/ui-workspace/src/client/WorkspaceBrowser.tsx
++++ b/packages/client/ui-workspace/src/client/WorkspaceBrowser.tsx
+@@ -9,7 +9,7 @@
+  * menu in between; the flow and its error dialog live in WorkspacePicker
+  * (same package — direct composition, no slot between them).
+  */
+-import { useEffect, useMemo, useRef, useState } from 'react'
++import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+ import clsx from 'clsx'
+ import {
+   Button, IconCloseFill14, IconPersonalizationOutline16,
+@@ -18,7 +18,7 @@ import {
+ import type {
+   SessionId, SessionListState, SessionSearchResultItem, WorkspaceId, WorkspaceView,
+ } from '@deepseek-ai/dsh-client-runtime/client'
+-import type { WorkspaceBrowserProps } from './contract/slots.ts'
++import type { SessionMenuOwnerProps, WorkspaceBrowserProps } from './contract/slots.ts'
+ import type { SessionNode, SessionOrderBy } from './tree.ts'
+ import { deriveFlat, deriveGroups, deriveSearchResults, UNGROUPED_KEY } from './tree.ts'
+ import { ProjectRowItem, SearchResultItem, SessionNodeItem } from './rows/Rows.tsx'
+@@ -218,6 +218,8 @@ type SessionTreeProps = Pick<
+   'useSessions' | 'startSession' | 'open' | 'forkSession'
+   | 'insertWorkspaceBefore' | 'insertSessionBefore' | 't'
+ > & {
++  /** Render this tree's session row-menu extension entries (owner-bound slot seat). */
++  renderSessionMenu: (owner: SessionMenuOwnerProps) => ReactNode
+   workspaces: readonly WorkspaceView[]
+   /** Explicit persisted zero-or-five-session state by Workspace group. */
+   groupExpansion: Readonly<Record<string, boolean>>
+@@ -247,7 +249,7 @@ type SessionTreeProps = Pick<
+ 
+ /** The scrolling session tree; unmounting drops the sessions subscription and expand-all state. */
+ function SessionTree({
+-  useSessions, startSession, open, forkSession, workspaces, archivedSessionIds,
++  useSessions, startSession, open, forkSession, renderSessionMenu, workspaces, archivedSessionIds,
+   onRenameRequest, onDeleteRequest, onSessionRename, onSessionArchive,
+   insertWorkspaceBefore, insertSessionBefore, orderBy,
+   groupExpansion, setGroupExpanded,
+@@ -516,6 +518,7 @@ function SessionTree({
+                     onRename={onSessionRename}
+                     onFork={forkSession}
+                     onArchive={onSessionArchive}
++                    renderSessionMenu={renderSessionMenu}
+                     drag={dragProps}
+                     t={t}
+                   />
+@@ -632,6 +635,7 @@ function FlatList({
+               onRename={onSessionRename}
+               onFork={forkSession}
+               onArchive={onSessionArchive}
++              renderSessionMenu={renderSessionMenu}
+               flat
+               drag={{
+                 start: () => {
+@@ -761,6 +765,9 @@ export function WorkspaceBrowser({
+   renderSlot,
+   t,
+ }: WorkspaceBrowserProps) {
++  const renderSessionMenu = (owner: SessionMenuOwnerProps): ReactNode => (
++    renderSlot('sidebar.workspaces.session-menu', owner)
++  )
+   const workspaces = useWorkspaces(state => state.items)
+   const workspacePhase = useWorkspaces(state => state.phase)
+   const archivedSessionIds = useWorkspaces(state => state.archivedSessionIds)
+@@ -1136,6 +1143,7 @@ export function WorkspaceBrowser({
+             : (
+               <SessionTree
+                 useSessions={useSessions}
++                renderSessionMenu={renderSessionMenu}
+                 onSessionRename={onSessionRename}
+                 onSessionArchive={onSessionArchive}
+                 forkSession={forkSession}
+diff --git a/packages/client/ui-workspace/src/client/contract/slots.ts b/packages/client/ui-workspace/src/client/contract/slots.ts
+index 8027a36..ebe14b6 100644
+--- a/packages/client/ui-workspace/src/client/contract/slots.ts
++++ b/packages/client/ui-workspace/src/client/contract/slots.ts
+@@ -50,12 +50,29 @@ export interface DirectoryFlowOwnerProps {
+   onError: (message: string) => void
+ }
+ 
++/** Owner currency of one session row-menu extension slot. */
++export interface SessionMenuOwnerProps {
++  /** Session the addressed row represents. */
++  sessionId: SessionId
++  /** Row display title (the localized New Session label for blank rows). */
++  title: string
++  /** Close the hosting menu after an action commits. */
++  onClose: () => void
++}
++
+ declare module '@deepseek-ai/dsh-client-ui-slots' {
+   interface SlotMap {
+     /** Directory-flow hole under the conversation empty-state picker (declared by the WorkspacePicker entry). */
+     'conversation.hero.workspace.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
+     /** Directory-flow hole under the sidebar browsing region (declared by the WorkspaceBrowser entry). */
+     'sidebar.workspaces.directoryFlow': { kind: 'single'; scope: 'root'; owner: DirectoryFlowOwnerProps }
++    /**
++     * Optional rows appended to each session row's `...` menu, rendered inside
++     * the popover after Rename/Fork/Archive. Declared by the WorkspaceBrowser
++     * entry; contributions render their own menu cells and receive the
++     * addressed session identity plus a close callback.
++     */
++    'sidebar.workspaces.session-menu': { kind: 'list'; scope: 'root'; owner: SessionMenuOwnerProps }
+   }
+ }
+ 
+@@ -140,7 +157,7 @@ export type WorkspaceBrowserInjected = DirectoryPickingInjected & {
+ /** Full browser props: shell owner share + viewing store + injected actions + the locale seat. */
+ export type WorkspaceBrowserProps =
+   PropsRuntime<'sidebar.workspaces'>
+-  & PropsRenderSlots<'sidebar.workspaces.directoryFlow'>
++  & PropsRenderSlots<'sidebar.workspaces.directoryFlow' | 'sidebar.workspaces.session-menu'>
+   & PropsStore<ReturnType<typeof createWorkspaceViewStore>>
+   & Omit<WorkspaceBrowserInjected, 'hooks'>
+   & DirectoryPickingHooks
+diff --git a/packages/client/ui-workspace/src/client/index.ts b/packages/client/ui-workspace/src/client/index.ts
+index 6b14243..bcb16d2 100644
+--- a/packages/client/ui-workspace/src/client/index.ts
++++ b/packages/client/ui-workspace/src/client/index.ts
+@@ -20,7 +20,7 @@ import { en, zh, type WorkspaceKey } from './locales.ts'
+ 
+ export type {
+   DirectoryFlowOwnerProps, DirectoryFlowSlotName, DirectoryPickingHooks, DirectoryPickingInjected,
+-  WorkspaceBrowserInjected, WorkspaceBrowserProps, WorkspacePickerInjected, WorkspacePickerProps,
++  SessionMenuOwnerProps, WorkspaceBrowserInjected, WorkspaceBrowserProps, WorkspacePickerInjected, WorkspacePickerProps,
+ } from './contract/slots.ts'
+ export type { WorkspaceKey } from './locales.ts'
+ 
+@@ -110,7 +110,10 @@ export function apply(ctx: ClientContext): void {
+   ctx.slots.inject('sidebar.workspaces', () => ctx.slots.register(
+     {
+       name: 'sidebar.workspaces',
+-      children: { 'sidebar.workspaces.directoryFlow': { kind: 'single', scope: 'root' } },
++      children: {
++        'sidebar.workspaces.directoryFlow': { kind: 'single', scope: 'root' },
++        'sidebar.workspaces.session-menu': { kind: 'list', scope: 'root' },
++      },
+       store: createWorkspaceViewStore(),
+       inject: browserInjected,
+       locale: NS,
+diff --git a/packages/client/ui-workspace/src/client/rows/Rows.tsx b/packages/client/ui-workspace/src/client/rows/Rows.tsx
+index 481e0f0..0d2fb4b 100644
+--- a/packages/client/ui-workspace/src/client/rows/Rows.tsx
++++ b/packages/client/ui-workspace/src/client/rows/Rows.tsx
+@@ -5,7 +5,7 @@
+  * except workspace Rename/Delete and session Rename/Fork/Archive; the session
+  * and workspace hover cards are suppressed while a menu is open.
+  */
+-import { useState } from 'react'
++import { useState, type ReactNode } from 'react'
+ import clsx from 'clsx'
+ import {
+   HoverCard, IconArchiveOutline20, IconBranchOutline16, IconEditOutline16,
+@@ -13,7 +13,7 @@ import {
+   IconTrashOutline16, IconTriangleRightFill14, Menu, StateDot,
+ } from '@deepseek-ai/dsh-client-ui-primitives'
+ import type { StateDotState } from '@deepseek-ai/dsh-client-ui-primitives'
+-import type { WorkspaceBrowserProps } from '../contract/slots.ts'
++import type { SessionMenuOwnerProps, WorkspaceBrowserProps } from '../contract/slots.ts'
+ import type { GroupNode, SearchResultNode, SessionNode } from '../tree.ts'
+ import { relativeTime } from '../tree.ts'
+ import css from './Rows.module.css'
+@@ -345,12 +345,13 @@ export function SearchResultItem({ result, currentId, onOpen, t }: {
+  * @param props.onRename - open the session rename dialog (id + current title).
+  * @param props.onFork - fork a session at its last completed turn.
+  * @param props.onArchive - archive a session by id.
++ * @param props.renderSessionMenu - owner-bound seat rendering contributed menu rows.
+  * @param props.drag - optional draggable-row wiring.
+  * @param props.flat - omit the empty status slot in the hierarchy-free flat list.
+  * @param props.t - the browser root's locale seat.
+  * @returns the session row.
+  */
+-export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork, onArchive, drag, flat = false, t }: {
++export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork, onArchive, renderSessionMenu, drag, flat = false, t }: {
+   node: SessionNode
+   currentId: string | undefined
+   now: number
+@@ -361,6 +362,8 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
+   onFork: (id: SessionNode['id']) => void
+   /** Archive this session (row menu action; commits without a dialog). */
+   onArchive: (id: SessionNode['id']) => void
++  /** Owner-bound seat rendering this row's slotted menu extensions. */
++  renderSessionMenu: (owner: SessionMenuOwnerProps) => ReactNode
+   /** Present only on draggable rows (workspace-group sessions outside search). */
+   drag?: RowDragProps | undefined
+   /** The row is rendered without a parent Workspace header. */
+@@ -439,6 +442,11 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
+             open={menuOpen}
+             onClose={() => { setMenuOpen(false) }}
+             items={sessionMenuItems}
++            extra={renderSessionMenu({
++              sessionId: node.id,
++              title,
++              onClose: () => { setMenuOpen(false) },
++            })}
+             onSelect={(id) => {
+               setMenuOpen(false)
+               if (id === 'rename') onRename(node.id, row.title)
