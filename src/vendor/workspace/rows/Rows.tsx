@@ -363,7 +363,7 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
   /** Archive this session (row menu action; commits without a dialog). */
   onArchive: (id: SessionNode['id']) => void
   /** Copy the addressed session's native id (row menu action). */
-  onCopySessionId: (id: SessionNode['id']) => void
+  onCopySessionId: (id: SessionNode['id']) => Promise<boolean>
   /** Present only on draggable rows (workspace-group sessions outside search). */
   drag?: RowDragProps | undefined
   /** The row is rendered without a parent Workspace header. */
@@ -444,9 +444,17 @@ export function SessionNodeItem({ node, currentId, now, onOpen, onRename, onFork
             onClose={() => { setMenuOpen(false) }}
             items={sessionMenuItems}
             onSelect={(id) => {
+              if (id === 'copy-session-id') {
+                // Close only after the write is accepted; a rejected write
+                // keeps the menu open so the user can retry.
+                void onCopySessionId(node.id).then((accepted) => {
+                  if (accepted) setMenuOpen(false)
+                  else console.error('[dsh-sessions] clipboard rejected the session id write')
+                })
+                return
+              }
               setMenuOpen(false)
               if (id === 'rename') onRename(node.id, row.title)
-              if (id === 'copy-session-id') onCopySessionId(node.id)
               if (id === 'fork') onFork(node.id)
               if (id === 'archive') onArchive(node.id)
             }}

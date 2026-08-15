@@ -128,7 +128,7 @@ export type WorkspaceBrowserInjected = DirectoryPickingInjected & {
    */
   archiveSession: (sessionId: SessionId) => Promise<void>
   /** Copy one session's native id to the browser clipboard (row menu action). */
-  copySessionId: (sessionId: SessionId) => void
+  copySessionId: (sessionId: SessionId) => Promise<boolean>
   /**
    * Reorder a session inside its Workspace account (DOM-insertBefore
    * semantics: omitted anchor appends to the end). The view refreshes from
