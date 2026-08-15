@@ -30,6 +30,27 @@ DSH 插件通过 profile 安装、通过 bundle patch 参与组合，详见官�
 
 需要命令行运行或参与核心功能开发，请以官方仓库为准。
 
+## 相关开源项目
+
+README 的组织方式参考 [DeepSeek Harness Desktop](https://github.com/anywhere-labs/deepseek-harness-desktop)（为 DSH 生态打造的桌面端体验，官网 [dshdesktop.cn](https://dshdesktop.cn)）。
+
+| 项目 | 简介 | 链接 |
+| --- | --- | --- |
+| DeepSeek Harness | DSH 核心生态框架，本插件的运行时与官方语义层来源。 | [GitHub](https://github.com/deepseek-ai/deepseek-harness) |
+| DeepSeek Harness Desktop | DSH 生态的桌面端体验。 | [GitHub](https://github.com/anywhere-labs/deepseek-harness-desktop) · [官网](https://dshdesktop.cn) |
+| Agents-Anywhere | 从手机远程控制电脑上的 Coding Agent。 | [GitHub](https://github.com/anywhere-labs/Agents-Anywhere) |
+
+Desktop 仓库 About 里的 topic 是标签，不是独立仓库，按 GitHub topic 页收录如下：
+
+| 标签 | 链接 |
+| --- | --- |
+| `deepseek` | [GitHub](https://github.com/topics/deepseek) |
+| `deepseek-harness` | [GitHub](https://github.com/topics/deepseek-harness) |
+| `dsh-plugin` | [GitHub](https://github.com/topics/dsh-plugin) |
+| `desktop` | [GitHub](https://github.com/topics/desktop) |
+| `dsh` | [GitHub](https://github.com/topics/dsh) |
+| `dsh-plugin-desktop` | [GitHub](https://github.com/topics/dsh-plugin-desktop) |
+
 ## 工作区界面
 
 当前发布的 `ui-workspace` 没有会话行菜单扩展槽位，`upstream/0001-web-session-row-menu-slot.patch` 是提交给上游的补丁。本包因此 vendor 了 `ui-workspace` 的完整浏览器源码（`src/vendor/workspace/`），在 bundle patch 中禁用内置行，用自己的注册补上 `sidebar.workspaces` 与 `conversation.hero.workspace` 两个 slot，其余行为与内置实现一致。
