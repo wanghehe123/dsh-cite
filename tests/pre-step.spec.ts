@@ -69,7 +69,7 @@ async function run(text: string, nextMessages?: UserMessage[]): Promise<PreStepD
   }
   return onPreStep(
     ctx(),
-    config,
+    () => config,
     { agent: agent(), messages: [direct], signal: new AbortController().signal },
     async () => decision,
   )

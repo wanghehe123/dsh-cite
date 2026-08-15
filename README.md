@@ -33,7 +33,9 @@ pnpm run test:gui
 
 ## 配置
 
-插件行配置（`cordis.patch.yml` 或 profile 覆盖）：
+Web UI：**设置 → 插件 → 插件配置 → 会话引用**，可直接切换“仅当前工作区 / 所有可见会话”。
+
+插件行配置（`cordis.patch.yml` 或 profile 覆盖，作为 UI 未覆盖项与默认值）：
 
 ```yaml
 - id: session-bridge

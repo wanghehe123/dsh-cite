@@ -74,7 +74,7 @@ function fakeRequest(url: string, body: unknown): IncomingMessage {
 }
 
 async function call(ctx: Context, operation: string, body: unknown): Promise<{ status: number; payload: unknown }> {
-  const handler = registerBridgeRoutes(ctx, config) as unknown as (req: IncomingMessage, res: ServerResponse) => Promise<void>
+  const handler = registerBridgeRoutes(ctx, () => config) as unknown as (req: IncomingMessage, res: ServerResponse) => Promise<void>
   const res = fakeResponse()
   await handler(fakeRequest(`/dsh-sessions/${operation}`, body), res)
   return { status: res.statusCode, payload: JSON.parse(res.body) as unknown }

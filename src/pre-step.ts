@@ -40,13 +40,14 @@ export interface PreStepPayload {
  */
 export async function onPreStep(
   ctx: Context,
-  config: Config,
+  configSource: () => Config,
   payload: PreStepPayload,
   next: () => Promise<PreStepDecision>,
 ): Promise<PreStepDecision> {
   const decision = await next()
   if (decision.kind !== 'enter') return decision
 
+  const config = configSource()
   const { agent, signal } = payload
   let allowed: ReadonlyMap<string, SessionRecord> | undefined
   const messagesOut: UserMessage[] = []

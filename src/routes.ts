@@ -31,21 +31,21 @@ class BadRequest extends Error {
 /**
  * Register the `/dsh-sessions` prefix route.
  * @param ctx - host root context carrying `webServer`.
- * @param config - validated plugin configuration.
+ * @param configSource - thunk returning the currently effective configuration.
  * @returns disposer removing the route.
  */
-export function registerBridgeRoutes(ctx: Context, config: Config): () => void {
+export function registerBridgeRoutes(ctx: Context, configSource: () => Config): () => void {
   return ctx.webServer.register({
     kind: 'prefix',
     path: '/dsh-sessions',
-    handler: (req, res) => handleRoute(ctx, config, req, res),
+    handler: (req, res) => handleRoute(ctx, configSource, req, res),
   })
 }
 
 /** Dispatch one request to its bridge operation. */
 async function handleRoute(
   ctx: Context,
-  config: Config,
+  configSource: () => Config,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -54,7 +54,7 @@ async function handleRoute(
   let body: unknown
   try {
     body = await readJsonBody(req)
-    const outcome = await dispatch(ctx, config, operation, body, req)
+    const outcome = await dispatch(ctx, configSource(), operation, body, req)
     sendJson(res, 200, outcome)
   } catch (error: unknown) {
     const bad = error instanceof BadRequest
