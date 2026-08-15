@@ -28,17 +28,28 @@ class BadRequest extends Error {
   }
 }
 
+/** Settings handle the host apply wires into the bridge routes. */
+export interface BridgeSettingsHandle {
+  get(): Config
+  update(patch: Partial<Config>): Promise<void>
+}
+
 /**
  * Register the `/dsh-sessions` prefix route.
  * @param ctx - host root context carrying `webServer`.
  * @param configSource - thunk returning the currently effective configuration.
+ * @param settings - persisted settings handle, when the settings service exists.
  * @returns disposer removing the route.
  */
-export function registerBridgeRoutes(ctx: Context, configSource: () => Config): () => void {
+export function registerBridgeRoutes(
+  ctx: Context,
+  configSource: () => Config,
+  settings?: () => BridgeSettingsHandle | undefined,
+): () => void {
   return ctx.webServer.register({
     kind: 'prefix',
     path: '/dsh-sessions',
-    handler: (req, res) => handleRoute(ctx, configSource, req, res),
+    handler: (req, res) => handleRoute(ctx, configSource, settings, req, res),
   })
 }
 
@@ -46,6 +57,7 @@ export function registerBridgeRoutes(ctx: Context, configSource: () => Config): 
 async function handleRoute(
   ctx: Context,
   configSource: () => Config,
+  settings: (() => BridgeSettingsHandle | undefined) | undefined,
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
@@ -54,7 +66,7 @@ async function handleRoute(
   let body: unknown
   try {
     body = await readJsonBody(req)
-    const outcome = await dispatch(ctx, configSource(), operation, body, req)
+    const outcome = await dispatch(ctx, configSource(), settings, operation, body, req)
     sendJson(res, 200, outcome)
   } catch (error: unknown) {
     const bad = error instanceof BadRequest
@@ -71,6 +83,7 @@ async function handleRoute(
 async function dispatch(
   ctx: Context,
   config: Config,
+  settings: (() => BridgeSettingsHandle | undefined) | undefined,
   operation: string,
   body: unknown,
   req: IncomingMessage,
@@ -91,9 +104,41 @@ async function dispatch(
         ...(label === undefined ? {} : { label }),
       }) }
     }
+    case 'settings':
+      return settingsOperation(settings, req.method ?? 'GET', body)
     default:
       throw new BadRequest('NOT_FOUND', `unknown dsh-sessions operation "${operation}"`)
   }
+}
+
+/** Read or update the persisted reference-scope setting. */
+async function settingsOperation(
+  settings: (() => BridgeSettingsHandle | undefined) | undefined,
+  method: string,
+  body: unknown,
+): Promise<SessionBridgeOutcome<unknown>> {
+  const handle = settings?.()
+  if (handle === undefined) {
+    return {
+      ok: false,
+      error: {
+        code: 'SETTINGS_UNAVAILABLE',
+        message: 'the settings service is not mounted in this composition',
+      },
+    }
+  }
+  if (method === 'GET') return { ok: true, value: handle.get() }
+  const { scope } = scopePayload(body)
+  await handle.update({ scope })
+  return { ok: true, value: handle.get() }
+}
+
+/** Validate and narrow the settings update payload. */
+function scopePayload(body: unknown): { scope: Config['scope'] } {
+  if (!isRecord(body) || (body.scope !== 'workspace' && body.scope !== 'all')) {
+    throw new BadRequest('BAD_REQUEST', 'scope must be "workspace" or "all"')
+  }
+  return { scope: body.scope }
 }
 
 /** Candidate discovery, scoped and ranked by target cwd. */

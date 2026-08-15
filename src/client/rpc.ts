@@ -57,6 +57,34 @@ export async function preflightReferences(
   if (!outcome.ok) throw new SessionBridgeTransportError(`${outcome.error.code}: ${outcome.error.message}`)
 }
 
-function isOutcome(value: unknown): value is { ok: boolean } {
+/** Read the persisted reference scope. */
+export async function getScopeSetting(
+  signal?: AbortSignal,
+): Promise<{ scope: 'workspace' | 'all' }> {
+  const response = await fetch('/dsh-sessions/settings', {
+    method: 'GET',
+    signal: signal ?? null,
+  })
+  if (!response.ok) throw new SessionBridgeTransportError(`dsh-sessions settings request failed (HTTP ${String(response.status)})`)
+  const payload: unknown = await response.json() as unknown
+  if (!isOutcome(payload)) throw new SessionBridgeTransportError('dsh-sessions settings returned a malformed outcome')
+  if (!payload.ok) throw new SessionBridgeTransportError(`${payload.error.code}: ${payload.error.message}`)
+  const value = payload.value
+  if (typeof value !== 'object' || value === null) throw new SessionBridgeTransportError('dsh-sessions settings returned a malformed section')
+  const scope = (value as Record<string, unknown>).scope
+  if (scope !== 'workspace' && scope !== 'all') throw new SessionBridgeTransportError('dsh-sessions settings returned an unknown scope')
+  return { scope }
+}
+
+/** Persist the reference scope choice. */
+export async function setScopeSetting(
+  scope: 'workspace' | 'all',
+  signal?: AbortSignal,
+): Promise<void> {
+  const outcome = await post<null>('settings', { scope }, signal)
+  if (!outcome.ok) throw new SessionBridgeTransportError(`${outcome.error.code}: ${outcome.error.message}`)
+}
+
+function isOutcome(value: unknown): value is SessionBridgeOutcome<unknown> {
   return typeof value === 'object' && value !== null && 'ok' in value && typeof value.ok === 'boolean'
 }

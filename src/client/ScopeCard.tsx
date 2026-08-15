@@ -1,9 +1,8 @@
 /**
- * Plugin-configuration card for the dsh-sessions reference scope. Binds the
- * `dsh-sessions` settings namespace and persists explicit scope choices.
+ * Plugin-configuration card for the dsh-sessions reference scope. Reads and
+ * writes the plugin-owned `/dsh-sessions/settings` routes.
  */
-import { useState, useSyncExternalStore, type ReactElement } from 'react'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
+import { useEffect, useState, type ReactElement } from 'react'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import css from './ScopeCard.module.css'
@@ -16,33 +15,36 @@ export interface SessionSettings {
 
 /** Injected face resolved when the card slot mounts. */
 export interface ScopeCardInjected {
-  scope: SettingsScope<SessionSettings>
+  load(signal?: AbortSignal): Promise<SessionSettings>
+  save(scope: SessionSettings['scope']): Promise<void>
 }
 
 export type ScopeCardProps =
   PropsRuntime<'settings.plugin.item'> & PropsLocale<typeof NS> & ScopeCardInjected
 
-/** Decode one host settings section into the client scope view. */
-function decodeSessionSettings(section: unknown): SessionSettings | undefined {
-  if (typeof section !== 'object' || section === null) return undefined
-  const scope = (section as Record<string, unknown>).scope
-  return scope === 'workspace' || scope === 'all' ? { scope } : undefined
-}
-
 /** Render the reference-scope card. */
-export function ScopeCard({ scope, t }: ScopeCardProps): ReactElement {
-  const snapshot = useSyncExternalStore(
-    listener => scope.subscribe(listener),
-    () => scope.getSnapshot(),
-  )
+export function ScopeCard({ load, save, t }: ScopeCardProps): ReactElement {
+  const [status, setStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading')
+  const [scope, setScope] = useState<SessionSettings['scope'] | undefined>()
   const [saving, setSaving] = useState(false)
-  const value = snapshot.value?.scope
-  const disabled = snapshot.status !== 'ready' || !snapshot.writable || saving
+
+  useEffect(() => {
+    const controller = new AbortController()
+    load(controller.signal)
+      .then((settings) => {
+        setScope(settings.scope)
+        setStatus('ready')
+      })
+      .catch(() => { setStatus('unavailable') })
+    return () => { controller.abort() }
+  }, [load])
 
   const select = (next: SessionSettings['scope']): void => {
-    if (disabled || value === next) return
+    if (saving || scope === undefined) return
     setSaving(true)
-    void scope.set('scope', next).finally(() => { setSaving(false) })
+    save(next)
+      .then(() => { setScope(next) })
+      .finally(() => { setSaving(false) })
   }
 
   return (
@@ -51,16 +53,16 @@ export function ScopeCard({ scope, t }: ScopeCardProps): ReactElement {
         <h3 className={css.title}>{t('settings.title')}</h3>
         <p className={css.description}>{t('settings.description')}</p>
       </div>
-      {snapshot.status === 'unavailable'
+      {status === 'unavailable'
         ? <p className={css.unavailable}>{t('settings.unavailable')}</p>
         : (
           <div className={css.options} role="radiogroup" aria-label={t('settings.scopeLabel')}>
             <button
               type="button"
               role="radio"
-              aria-checked={value === 'workspace'}
+              aria-checked={scope === 'workspace'}
               className={css.option}
-              disabled={disabled}
+              disabled={status !== 'ready' || saving}
               onClick={() => { select('workspace') }}
             >
               <span className={css.optionTitle}>{t('settings.scope.workspace')}</span>
@@ -69,9 +71,9 @@ export function ScopeCard({ scope, t }: ScopeCardProps): ReactElement {
             <button
               type="button"
               role="radio"
-              aria-checked={value === 'all'}
+              aria-checked={scope === 'all'}
               className={css.option}
-              disabled={disabled}
+              disabled={status !== 'ready' || saving}
               onClick={() => { select('all') }}
             >
               <span className={css.optionTitle}>{t('settings.scope.all')}</span>
@@ -82,5 +84,3 @@ export function ScopeCard({ scope, t }: ScopeCardProps): ReactElement {
     </section>
   )
 }
-
-export { decodeSessionSettings }

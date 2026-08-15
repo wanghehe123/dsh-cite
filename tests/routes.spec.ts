@@ -63,20 +63,26 @@ function fakeResponse(): FakeResponse {
   return res as unknown as FakeResponse
 }
 
-function fakeRequest(url: string, body: unknown): IncomingMessage {
+function fakeRequest(url: string, body: unknown, method = 'POST'): IncomingMessage {
   const encoded = Buffer.from(JSON.stringify(body))
   return {
     url,
-    method: 'POST',
+    method,
     once: vi.fn(),
     [Symbol.asyncIterator]: async function * () { yield encoded },
   } as unknown as IncomingMessage
 }
 
-async function call(ctx: Context, operation: string, body: unknown): Promise<{ status: number; payload: unknown }> {
-  const handler = registerBridgeRoutes(ctx, () => config) as unknown as (req: IncomingMessage, res: ServerResponse) => Promise<void>
+async function call(
+  ctx: Context,
+  operation: string,
+  body: unknown,
+  settings?: () => { get(): typeof config; update(patch: object): Promise<void> } | undefined,
+  method = 'POST',
+): Promise<{ status: number; payload: unknown }> {
+  const handler = registerBridgeRoutes(ctx, () => config, settings) as unknown as (req: IncomingMessage, res: ServerResponse) => Promise<void>
   const res = fakeResponse()
-  await handler(fakeRequest(`/dsh-sessions/${operation}`, body), res)
+  await handler(fakeRequest(`/dsh-sessions/${operation}`, body, method), res)
   return { status: res.statusCode, payload: JSON.parse(res.body) as unknown }
 }
 
@@ -117,6 +123,30 @@ describe('bridge routes', () => {
     expect(payload).toEqual({
       ok: false,
       error: { code: 'SESSION_REFERENCE_SCOPE_DENIED', message: expect.stringContaining('outside') },
+    })
+  })
+
+  it('reads and persists the reference scope setting', async () => {
+    const next = { ...config, scope: 'all' as const }
+    const settings = () => ({
+      get: () => next,
+      update: vi.fn(async () => {}),
+    })
+    const read = await call(fakeCtx(), 'settings', {}, settings, 'GET')
+    expect(read.status).toBe(200)
+    expect(read.payload).toEqual({ ok: true, value: next })
+
+    const written = await call(fakeCtx(), 'settings', { scope: 'all' }, settings)
+    expect(written.status).toBe(200)
+    expect(written.payload).toEqual({ ok: true, value: next })
+  })
+
+  it('reports unavailable settings when no settings service is mounted', async () => {
+    const { status, payload } = await call(fakeCtx(), 'settings', {}, undefined, 'GET')
+    expect(status).toBe(200)
+    expect(payload).toEqual({
+      ok: false,
+      error: { code: 'SETTINGS_UNAVAILABLE', message: expect.stringContaining('settings service') },
     })
   })
 })
