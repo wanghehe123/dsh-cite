@@ -24,6 +24,7 @@ export type ScopeCardProps =
 
 /** Render the reference-scope card. */
 export function ScopeCard({ load, save, t }: ScopeCardProps): ReactElement {
+  const [expanded, setExpanded] = useState(false)
   const [status, setStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading')
   const [scope, setScope] = useState<SessionSettings['scope'] | undefined>()
   const [saving, setSaving] = useState(false)
@@ -49,38 +50,48 @@ export function ScopeCard({ load, save, t }: ScopeCardProps): ReactElement {
 
   return (
     <section className={css.card}>
-      <div className={css.heading}>
+      <button
+        type="button"
+        className={css.header}
+        aria-expanded={expanded}
+        onClick={() => { setExpanded(current => !current) }}
+      >
+        <span className={css.chevron} aria-hidden="true">▸</span>
         <h3 className={css.title}>{t('settings.title')}</h3>
-        <p className={css.description}>{t('settings.description')}</p>
-      </div>
-      {status === 'unavailable'
-        ? <p className={css.unavailable}>{t('settings.unavailable')}</p>
-        : (
-          <div className={css.options} role="radiogroup" aria-label={t('settings.scopeLabel')}>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={scope === 'workspace'}
-              className={css.option}
-              disabled={status !== 'ready' || saving}
-              onClick={() => { select('workspace') }}
-            >
-              <span className={css.optionTitle}>{t('settings.scope.workspace')}</span>
-              <span className={css.optionHint}>{t('settings.scope.workspaceHint')}</span>
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={scope === 'all'}
-              className={css.option}
-              disabled={status !== 'ready' || saving}
-              onClick={() => { select('all') }}
-            >
-              <span className={css.optionTitle}>{t('settings.scope.all')}</span>
-              <span className={css.optionHint}>{t('settings.scope.allHint')}</span>
-            </button>
-          </div>
-        )}
+      </button>
+      {expanded && (
+        <div className={css.body}>
+          <p className={css.description}>{t('settings.description')}</p>
+          {status === 'unavailable'
+            ? <p className={css.unavailable}>{t('settings.unavailable')}</p>
+            : (
+              <div className={css.options} role="radiogroup" aria-label={t('settings.scopeLabel')}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={scope === 'workspace'}
+                  className={css.option}
+                  disabled={status !== 'ready' || saving}
+                  onClick={() => { select('workspace') }}
+                >
+                  <span className={css.optionTitle}>{t('settings.scope.workspace')}</span>
+                  <span className={css.optionHint}>{t('settings.scope.workspaceHint')}</span>
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={scope === 'all'}
+                  className={css.option}
+                  disabled={status !== 'ready' || saving}
+                  onClick={() => { select('all') }}
+                >
+                  <span className={css.optionTitle}>{t('settings.scope.all')}</span>
+                  <span className={css.optionHint}>{t('settings.scope.allHint')}</span>
+                </button>
+              </div>
+            )}
+        </div>
+      )}
     </section>
   )
 }

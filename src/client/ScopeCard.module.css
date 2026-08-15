@@ -1,19 +1,40 @@
-/* Plugin-configuration card: same card feel as the settings surface. */
+/* Plugin-configuration card: collapsible card on the settings surface. */
 
 .card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: 12px;
   background: var(--dsw-alias-bg-layer-1);
 }
 
-.heading {
+.header {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 16px;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.header:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.chevron {
+  width: 16px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 12px;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+.header[aria-expanded='true'] .chevron {
+  transform: rotate(90deg);
 }
 
 .title {
@@ -21,6 +42,13 @@
   color: var(--dsw-alias-label-primary);
   font-size: 16px;
   line-height: 24px;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 16px 16px;
 }
 
 .description {
