@@ -20,6 +20,15 @@ export const zh = {
   'settings.saving': '保存中…',
   'settings.discard': '放弃修改',
   'settings.saveFailed': '本部署没有接受这些值，已保留供你修改。',
+  'quote.button': '添加到对话',
+  'quote.added': '已添加',
+  'quote.failed': '添加失败，请重试',
+  'quote.chip': '引用 {index}',
+  'quote.count': '已引用 {count} 段',
+  'quote.expand': '展开引用',
+  'quote.collapse': '收起引用',
+  'quote.remove': '移除 {label}',
+  'quote.truncated': '…（已截断）',
 } satisfies Record<string, string>
 
 /** The session bridge namespace key union. */
@@ -43,6 +52,15 @@ export const en = {
   'settings.saving': 'Saving…',
   'settings.discard': 'Discard',
   'settings.saveFailed': 'The deployment did not accept these values; they were left for you to correct.',
+  'quote.button': 'Add to conversation',
+  'quote.added': 'Added',
+  'quote.failed': 'Could not add; try again',
+  'quote.chip': 'Quote {index}',
+  'quote.count': 'Quoted: {count}',
+  'quote.expand': 'Expand quote',
+  'quote.collapse': 'Collapse quote',
+  'quote.remove': 'Remove {label}',
+  'quote.truncated': '… (truncated)',
 } satisfies Record<SessionKey, string>
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {

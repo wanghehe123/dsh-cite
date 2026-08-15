@@ -11,6 +11,7 @@ import { en, NS, zh } from './locales.ts'
 import { getScopeSetting, setScopeSetting } from './rpc.ts'
 import { ScopeCard, type ScopeCardInjected } from './ScopeCard.tsx'
 import { createSessionMentionSource } from './session-mention-source.ts'
+import { createQuoteSource } from './quote-source.ts'
 import { registerWorkspaceSurface } from '../vendor/workspace/index.ts'
 
 /** Required client services: locale, session/workspace feeds, triggers, slots. */
@@ -29,6 +30,11 @@ export function apply(ctx: ClientContext): void {
     const unregister = ctx.inputTriggers.registerSource(createSessionMentionSource(ctx))
     return () => { unregister() }
   }, 'dsh-sessions: @ source')
+
+  ctx.effect(() => {
+    const unregister = ctx.inputTriggers.registerSource(createQuoteSource())
+    return () => { unregister() }
+  }, 'dsh-sessions: quote source')
 
   ctx.slots.inject(
     'settings.plugin.item',
