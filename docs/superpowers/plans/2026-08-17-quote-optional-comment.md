@@ -10,6 +10,8 @@
 
 **Tech Stack:** TypeScript + React（DSH client plugin），CSS Modules，vitest，tsc/tsdown 构建链。
 
+> 实现期间发现并修复了两个计划外问题，以最终代码与 spec 为准：1) `codec.serialize` 与 `clipboardText` 都使用 `formatQuoteSerialized`（首尾换行分隔），本计划 Task 2 的旧代码片段已被替代；2) `decodeQuoteRef` 为满足 `exactOptionalPropertyTypes` 使用条件分支返回，不是计划里的直接返回。本计划保留为历史记录。
+
 ---
 
 ### Task 1: 扩展纯引用工具（quote.ts）并补测试
