@@ -171,6 +171,86 @@
   cursor: default;
 }
 
+.popoverCard {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 999px;
+  background: var(--dsw-alias-button-floating-fill);
+  box-shadow: var(--dsw-shadow-lv2);
+}
+
+.popoverCard:focus-within {
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+.commentInput {
+  flex: 1;
+  min-width: 176px;
+  padding: 5px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  line-height: 20px;
+  outline: none;
+}
+
+.commentInput::placeholder {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.confirmButton {
+  flex: none;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--dsw-alias-state-business-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 28px;
+  cursor: pointer;
+}
+
+.confirmButton:hover {
+  opacity: 0.88;
+}
+
+.confirmButton:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+}
+
+.commentBox {
+  margin: 0 10px 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+.commentLabel {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.commentBody {
+  margin: 2px 0 0;
+  padding: 0;
+  max-height: 120px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+}
+
 .popoverFailed {
   color: var(--dsw-alias-state-error-primary);
 }

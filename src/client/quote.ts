@@ -72,6 +72,9 @@ export function decodeQuoteRef(ref: string): QuoteRefPayload {
   ) {
     throw new Error('malformed quote ref')
   }
+  if (candidate.comment === undefined) {
+    return { v: 1, id: candidate.id, text: candidate.text, truncated: candidate.truncated }
+  }
   return {
     v: 1,
     id: candidate.id,

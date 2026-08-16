@@ -15,8 +15,8 @@ import type { ReferenceInsert, TokenSpan } from '@deepseek-ai/dsh-client-ui-inpu
 import type { NS } from './locales.ts'
 import { QUOTE_SOURCE_NAME } from './quote-source.ts'
 import {
-  createQuoteId, encodeQuoteRef, formatQuoteBlock, normalizeQuoteText,
-  quoteFullText, quotePreview, type QuoteRefPayload,
+  createQuoteId, encodeQuoteRef, formatQuoteWithComment, normalizeQuoteComment,
+  normalizeQuoteText, quoteComment, quoteFullText, quotePreview, type QuoteRefPayload,
 } from './quote.ts'
 import css from './QuoteDock.module.css'
 
@@ -36,6 +36,7 @@ interface QuotePopup {
   top: number
   above: boolean
   text: string
+  comment: string
   kind: 'offer' | 'added' | 'failed'
 }
 
@@ -61,6 +62,7 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set())
   const inputRef = useRef(input)
   const dismissTimerRef = useRef<number | undefined>(undefined)
+  const popoverRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => { inputRef.current = input }, [input])
 
@@ -73,10 +75,14 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
   }, [])
 
   const hideOffer = useCallback(() => {
-    setPopup(current => current?.kind === 'offer' ? null : current)
+    setPopup(current => current === null || current.kind === 'added' ? current : null)
   }, [])
 
   const updatePopup = useCallback(() => {
+    if (popoverRef.current?.contains(document.activeElement)) {
+      if (inputRef.current.phase !== 'plain') hideOffer()
+      return
+    }
     const selection = window.getSelection()
     if (selection === null || selection.isCollapsed || selection.rangeCount === 0) {
       hideOffer()
@@ -112,7 +118,14 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
     const left = Math.min(Math.max(rect.left + rect.width / 2, 12), maxLeft)
     const above = rect.top >= 48
     const top = above ? rect.top - 8 : rect.bottom + 8
-    setPopup({ left, top, above, text, kind: 'offer' })
+    setPopup(current => ({
+      left,
+      top,
+      above,
+      text,
+      comment: current?.text === text ? current.comment : '',
+      kind: 'offer',
+    }))
   }, [hideOffer])
 
   useEffect(() => {
@@ -129,7 +142,14 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
 
   const showTransient = useCallback((kind: 'added' | 'failed') => {
     setPopup(current => current === null ? null : { ...current, kind })
-    scheduleDismiss()
+    window.clearTimeout(dismissTimerRef.current)
+    if (kind === 'added') {
+      scheduleDismiss()
+      return
+    }
+    dismissTimerRef.current = window.setTimeout(() => {
+      setPopup(current => current === null || current.kind !== 'failed' ? current : { ...current, kind: 'offer' })
+    }, 1400)
   }, [scheduleDismiss])
 
   const focusComposerAtEnd = useCallback(() => {
@@ -154,6 +174,8 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
       hideOffer()
       return
     }
+    const normalizedComment = normalizeQuoteComment(popup.comment, t('quote.truncated'))
+    const comment = normalizedComment.text === '' ? undefined : normalizedComment.text
     const index = snapshot.occurrences
       .filter(occurrence => occurrence.source === QUOTE_SOURCE_NAME).length + 1
     const payload: QuoteRefPayload = {
@@ -161,12 +183,13 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
       id: createQuoteId(),
       text: normalized.text,
       truncated: normalized.truncated,
+      ...(comment === undefined ? {} : { comment }),
     }
     const reference: ReferenceInsert = {
       source: QUOTE_SOURCE_NAME,
       ref: encodeQuoteRef(payload),
       label: t('quote.chip', { index }),
-      clipboardText: formatQuoteBlock(normalized.text),
+      clipboardText: formatQuoteWithComment(normalized.text, comment),
     }
     const span: TokenSpan = {
       start: snapshot.draft.length,
@@ -205,29 +228,68 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
 
   const popover = popup === null ? null : createPortal(
     <div
+      ref={popoverRef}
       className={css.popover}
+      data-dsh-sessions-quote-popover
       style={{
         left: popup.left,
         top: popup.top,
         transform: popup.above ? 'translate(-50%, -100%)' : 'translate(-50%, 0)',
       }}
     >
-      <button
-        type="button"
-        className={clsx(css.popoverButton, popup.kind === 'failed' && css.popoverFailed)}
-        disabled={popup.kind !== 'offer'}
-        onMouseDown={event => { event.preventDefault() }}
-        onClick={() => { addQuote() }}
-      >
-        <QuoteGlyph />
-        <span>
-          {popup.kind === 'added'
-            ? t('quote.added')
-            : popup.kind === 'failed'
-              ? t('quote.failed')
-              : t('quote.button')}
-        </span>
-      </button>
+      {popup.kind === 'offer'
+        ? (
+          <div
+            className={css.popoverCard}
+            onMouseDown={event => { event.preventDefault() }}
+          >
+            <input
+              className={css.commentInput}
+              value={popup.comment}
+              placeholder={t('quote.commentPlaceholder')}
+              aria-label={t('quote.commentPlaceholder')}
+              onMouseDown={event => {
+                event.preventDefault()
+                event.currentTarget.focus()
+              }}
+              onChange={event => {
+                const comment = event.currentTarget.value
+                setPopup(current => current === null ? null : { ...current, comment })
+              }}
+              onKeyDown={event => {
+                if (event.key === 'Enter') {
+                  if (event.nativeEvent.isComposing) return
+                  event.preventDefault()
+                  addQuote()
+                } else if (event.key === 'Escape') {
+                  event.preventDefault()
+                  window.getSelection()?.removeAllRanges()
+                  setPopup(null)
+                }
+              }}
+            />
+            <button
+              type="button"
+              className={css.confirmButton}
+              aria-label={t('quote.confirm', { index: quotes.length + 1 })}
+              title={t('quote.confirm', { index: quotes.length + 1 })}
+              onClick={() => { addQuote() }}
+            >
+              {quotes.length + 1}
+            </button>
+          </div>
+        )
+        : (
+          <button
+            type="button"
+            className={clsx(css.popoverButton, popup.kind === 'failed' && css.popoverFailed)}
+            disabled
+            onMouseDown={event => { event.preventDefault() }}
+          >
+            <QuoteGlyph />
+            <span>{popup.kind === 'added' ? t('quote.added') : t('quote.failed')}</span>
+          </button>
+        )}
     </div>,
     document.body,
   )
@@ -241,6 +303,7 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
             <ul className={css.list}>
               {quotes.map(quote => {
                 const isOpen = expanded.has(quote.occurrenceId)
+                const comment = quoteComment(quote.ref)
                 return (
                   <li key={quote.occurrenceId} className={css.item}>
                     <div className={css.row}>
@@ -265,7 +328,21 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
                         <IconCloseOutline16 />
                       </button>
                     </div>
-                    {isOpen ? <pre className={css.body}>{quoteFullText(quote.ref) ?? quote.label}</pre> : null}
+                    {isOpen
+                      ? (
+                        <>
+                          <pre className={css.body}>{quoteFullText(quote.ref) ?? quote.label}</pre>
+                          {comment !== null
+                            ? (
+                              <div className={css.commentBox}>
+                                <div className={css.commentLabel}>{t('quote.commentLabel')}</div>
+                                <pre className={css.commentBody}>{comment}</pre>
+                              </div>
+                            )
+                            : null}
+                        </>
+                      )
+                      : null}
                   </li>
                 )
               })}
