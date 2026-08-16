@@ -12,6 +12,8 @@
 
 > 实现期间发现并修复了两个计划外问题，以最终代码与 spec 为准：1) `codec.serialize` 与 `clipboardText` 都使用 `formatQuoteSerialized`（首尾换行分隔），本计划 Task 2 的旧代码片段已被替代；2) `decodeQuoteRef` 为满足 `exactOptionalPropertyTypes` 使用条件分支返回，不是计划里的直接返回。本计划保留为历史记录。
 
+> 第二轮交互改版（2026-08-17）：用户把交互改为「先添加引用 → 选中句子上方序号气泡 → 点气泡弹出评论卡片（取消/保存）」。本计划描述的第一轮浮层输入框方案仅作历史参考；最终实现见 spec 第二轮修订与 commit `8283129` 起的提交。
+
 ---
 
 ### Task 1: 扩展纯引用工具（quote.ts）并补测试
