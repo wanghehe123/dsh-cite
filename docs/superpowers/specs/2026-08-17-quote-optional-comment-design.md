@@ -70,11 +70,12 @@ InputMachine 插入 U+FFFC chip（官方撤销/复制/粘贴/偏移维护）
 - 新增 `formatQuoteWithComment(text, comment?): string`：
   - `comment` 为 undefined / 空串时返回 `formatQuoteBlock(text)`；
   - 否则返回 `` `${formatQuoteBlock(text)}\n\n${comment}` ``。
+- 新增 `formatQuoteSerialized(text, comment?): string`：返回 `` `\n${formatQuoteWithComment(text, comment)}\n` ``，供 codec 的 prompt 序列化使用；官方 sink 最终 `trim()`，首尾换行不会进入模型文本，但内部换行保证相邻 chip（官方只插一个空格）之间引用块和评论不会粘连成一行。
 - 新增 `quoteComment(ref): string | null` 供引用条读取；畸形 ref 返回 null。
 
 ### 2. `src/client/quote-source.ts`
 
-- `codec.clipboardText` 与 `codec.serialize` 改用 `formatQuoteWithComment(text, comment)`；解码失败行为不变（抛错、阻断发送）。
+- `codec.serialize` 改用 `formatQuoteSerialized(text, comment)`（带首尾换行分隔）；`codec.clipboardText` 继续用 `formatQuoteWithComment(text, comment)` 输出干净的单条文本。解码失败行为不变（抛错、阻断发送）。
 
 ### 3. `src/client/QuoteDock.tsx`
 
@@ -109,8 +110,9 @@ en 增加：`quote.commentPlaceholder: 'Add optional comment…'`、`quote.comme
   - ref 往返：带 comment 的 payload 编码解码一致；旧 payload（无 comment）解码后 `comment === undefined`；`comment` 非字符串时报 malformed。
   - `quoteComment`：正常读取、畸形 ref 返回 null。
 - `tests/quote-source.spec.ts`：
-  - serialize / clipboardText 输出 `> 引用\n\n评论`。
-  - 无评论 payload 输出与旧断言一致（回归）。
+  - serialize 输出 `\n> 引用\n\n评论\n`，clipboardText 输出 `> 引用\n\n评论`。
+  - 无评论 payload 经 sink `trim()` 后与旧格式一致（回归）。
+  - 相邻多个 chip 模拟官方 sink 拼接后，各引用块与评论互不粘连。
   - 畸形 ref 仍 reject。
 - 回归：现有全部 vitest、`npx tsc -b tsconfig.json`、`npm run build`。
 
