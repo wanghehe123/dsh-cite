@@ -7,12 +7,16 @@
 /** Hard cap on one quote's size, counted in Unicode code points. */
 export const MAX_QUOTE_CHARS = 16_000
 
+/** Hard cap on one comment's size, counted in Unicode code points. */
+export const MAX_COMMENT_CHARS = 4_000
+
 /** Wire-neutral payload carried inside one quote chip's opaque ref. */
 export interface QuoteRefPayload {
   v: 1
   id: string
   text: string
   truncated: boolean
+  comment?: string
 }
 
 /** Result of normalizing one selection before it becomes a quote. */
@@ -64,10 +68,17 @@ export function decodeQuoteRef(ref: string): QuoteRefPayload {
     || typeof candidate.id !== 'string'
     || typeof candidate.text !== 'string'
     || typeof candidate.truncated !== 'boolean'
+    || (candidate.comment !== undefined && typeof candidate.comment !== 'string')
   ) {
     throw new Error('malformed quote ref')
   }
-  return { v: 1, id: candidate.id, text: candidate.text, truncated: candidate.truncated }
+  return {
+    v: 1,
+    id: candidate.id,
+    text: candidate.text,
+    truncated: candidate.truncated,
+    comment: candidate.comment,
+  }
 }
 
 /**
@@ -86,6 +97,21 @@ export function normalizeQuoteText(raw: string, truncatedMarker: string): Normal
 }
 
 /**
+ * Normalize one optional comment: trim, then truncate by code points so
+ * surrogate pairs are never split; append `truncatedMarker` exactly when
+ * truncation happened.
+ */
+export function normalizeQuoteComment(raw: string, truncatedMarker: string): NormalizedQuote {
+  const trimmed = raw.trim()
+  const units = Array.from(trimmed)
+  if (units.length <= MAX_COMMENT_CHARS) return { text: trimmed, truncated: false }
+  return {
+    text: `${units.slice(0, MAX_COMMENT_CHARS).join('')}${truncatedMarker}`,
+    truncated: true,
+  }
+}
+
+/**
  * Project one quote payload to the Markdown blockquote sent to the model:
  * every line gets a `> ` prefix; blank lines stay bare `>` so paragraph
  * breaks survive inside the quote.
@@ -96,6 +122,18 @@ export function formatQuoteBlock(text: string): string {
     .split('\n')
     .map(line => line === '' ? '>' : `> ${line}`)
     .join('\n')
+}
+
+/**
+ * Project one quote payload to the Markdown sent to the model: the
+ * blockquote first, then one blank line and the trimmed comment when it is
+ * non-empty. Without a comment the output is exactly `formatQuoteBlock`.
+ */
+export function formatQuoteWithComment(text: string, comment: string | undefined): string {
+  const quote = formatQuoteBlock(text)
+  const trimmed = comment?.trim()
+  if (trimmed === undefined || trimmed === '') return quote
+  return `${quote}\n\n${trimmed}`
 }
 
 /** Generate a unique quote id for one quote chip. */
@@ -118,4 +156,14 @@ export function quotePreview(ref: string, fallback: string): string {
   if (text === null || text === '') return fallback
   const first = text.split('\n').find(line => line.trim() !== '')
   return first ?? fallback
+}
+
+/** Read the optional comment from an occurrence ref; null when absent/malformed. */
+export function quoteComment(ref: string): string | null {
+  try {
+    const comment = decodeQuoteRef(ref).comment
+    return comment === undefined || comment === '' ? null : comment
+  } catch {
+    return null
+  }
 }

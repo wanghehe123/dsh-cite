@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  decodeQuoteRef, encodeQuoteRef, formatQuoteBlock, MAX_QUOTE_CHARS,
-  normalizeQuoteText, quoteFullText, quotePreview, type QuoteRefPayload,
+  decodeQuoteRef, encodeQuoteRef, formatQuoteBlock, formatQuoteWithComment,
+  MAX_COMMENT_CHARS, MAX_QUOTE_CHARS, normalizeQuoteComment, normalizeQuoteText,
+  quoteComment, quoteFullText, quotePreview, type QuoteRefPayload,
 } from '../src/client/quote.ts'
 
 const MARKER = '…（已截断）'
@@ -26,6 +27,39 @@ describe('normalizeQuoteText', () => {
 
   it('returns empty text as not truncated', () => {
     expect(normalizeQuoteText('   \n', MARKER)).toEqual({ text: '', truncated: false })
+  })
+})
+
+describe('normalizeQuoteComment', () => {
+  it('trims the comment', () => {
+    expect(normalizeQuoteComment('  帮我解释一下\n', MARKER)).toEqual({ text: '帮我解释一下', truncated: false })
+  })
+
+  it('returns an empty comment untouched and not truncated', () => {
+    expect(normalizeQuoteComment('   \n', MARKER)).toEqual({ text: '', truncated: false })
+  })
+
+  it('keeps a comment at the code-point cap untouched', () => {
+    const comment = 'a'.repeat(MAX_COMMENT_CHARS)
+    expect(normalizeQuoteComment(comment, MARKER)).toEqual({ text: comment, truncated: false })
+  })
+
+  it('truncates over the cap by code points and appends the marker', () => {
+    const normalized = normalizeQuoteComment('😀'.repeat(MAX_COMMENT_CHARS + 1), MARKER)
+    expect(normalized.truncated).toBe(true)
+    expect(Array.from(normalized.text).slice(0, MAX_COMMENT_CHARS).join('')).toBe('😀'.repeat(MAX_COMMENT_CHARS))
+    expect(normalized.text.endsWith(MARKER)).toBe(true)
+  })
+})
+
+describe('formatQuoteWithComment', () => {
+  it('equals formatQuoteBlock when the comment is undefined or blank', () => {
+    expect(formatQuoteWithComment('hello', undefined)).toBe('> hello')
+    expect(formatQuoteWithComment('hello', '   \n')).toBe('> hello')
+  })
+
+  it('appends the trimmed comment after one blank line', () => {
+    expect(formatQuoteWithComment('a\n\nb', '  解释一下  ')).toBe('> a\n>\n> b\n\n解释一下')
   })
 })
 
@@ -59,6 +93,19 @@ describe('quote refs', () => {
     const ref = encodeQuoteRef({ v: 2, id: 'x', text: 'x', truncated: false } as unknown as QuoteRefPayload)
     expect(() => decodeQuoteRef(ref)).toThrow(/malformed quote ref/)
   })
+
+  it('round-trips a payload with an optional comment and decodes legacy payloads without one', () => {
+    const payload: QuoteRefPayload = { v: 1, id: 'quote-5', text: '原文', truncated: false, comment: '解释一下' }
+    const ref = encodeQuoteRef(payload)
+    expect(decodeQuoteRef(ref)).toEqual(payload)
+    const legacy = encodeQuoteRef({ v: 1, id: 'quote-6', text: '原文', truncated: false })
+    expect(decodeQuoteRef(legacy).comment).toBeUndefined()
+  })
+
+  it('rejects a payload whose comment is not a string', () => {
+    const ref = encodeQuoteRef({ v: 1, id: 'x', text: 'x', truncated: false, comment: 42 } as unknown as QuoteRefPayload)
+    expect(() => decodeQuoteRef(ref)).toThrow(/malformed quote ref/)
+  })
 })
 
 describe('quote display helpers', () => {
@@ -72,5 +119,11 @@ describe('quote display helpers', () => {
   it('falls back for malformed refs', () => {
     expect(quoteFullText('%%%')).toBeNull()
     expect(quotePreview('%%%', 'fallback')).toBe('fallback')
+  })
+
+  it('reads an optional comment and falls back for malformed refs', () => {
+    const payload: QuoteRefPayload = { v: 1, id: 'quote-7', text: '原文', truncated: false, comment: '重点看这里' }
+    expect(quoteComment(encodeQuoteRef(payload))).toBe('重点看这里')
+    expect(quoteComment('%%%')).toBeNull()
   })
 })
