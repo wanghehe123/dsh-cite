@@ -26,7 +26,7 @@ describe('createQuoteSource', () => {
     if (source.codec === undefined) throw new Error('quote source must declare a codec')
     const payload: QuoteRefPayload = { v: 1, id: 'quote-3', text: '第一行\n\n第二行', truncated: false }
     await expect(source.codec.serialize(encodeQuoteRef(payload))).resolves
-      .toBe('> 第一行\n>\n> 第二行')
+      .toBe('\n> 第一行\n>\n> 第二行\n')
   })
 
   it('projects the same blockquote through clipboardText', () => {
@@ -49,7 +49,27 @@ describe('createQuoteSource', () => {
     if (source.codec === undefined) throw new Error('quote source must declare a codec')
     const payload: QuoteRefPayload = { v: 1, id: 'quote-5', text: '第一行\n\n第二行', truncated: false, comment: '解释一下' }
     await expect(source.codec.serialize(encodeQuoteRef(payload))).resolves
-      .toBe('> 第一行\n>\n> 第二行\n\n解释一下')
+      .toBe('\n> 第一行\n>\n> 第二行\n\n解释一下\n')
+  })
+
+  it('keeps adjacent quotes and comments separated after the input sink joins chips', async () => {
+    const source = createQuoteSource()
+    if (source.codec === undefined) throw new Error('quote source must declare a codec')
+    const payloads: QuoteRefPayload[] = [
+      { v: 1, id: 'quote-7', text: '甲', truncated: false, comment: '说明甲' },
+      { v: 1, id: 'quote-8', text: '乙', truncated: false, comment: '说明乙' },
+    ]
+    const parts = await Promise.all(payloads.map(payload => source.codec!.serialize(encodeQuoteRef(payload))))
+    const draft = '\uFFFC \uFFFC '
+    let out = ''
+    let cursor = 0
+    for (const part of parts) {
+      const offset = draft.indexOf('\uFFFC', cursor)
+      out += draft.slice(cursor, offset) + part
+      cursor = offset + 1
+    }
+    out += draft.slice(cursor)
+    expect(out.trim()).toBe('> 甲\n\n说明甲\n \n> 乙\n\n说明乙')
   })
 
   it('projects the same quoted comment through clipboardText', () => {

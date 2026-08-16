@@ -139,6 +139,17 @@ export function formatQuoteWithComment(text: string, comment: string | undefined
   return `${quote}\n\n${trimmed}`
 }
 
+/**
+ * Prompt serialization for the input sink: the official pipeline joins chip
+ * texts with the draft text around the placeholder (usually a single space
+ * between adjacent chips), so surround the block with newlines. The sink
+ * trims the final message; the inner newlines keep adjacent blockquotes and
+ * their comments from gluing into one line.
+ */
+export function formatQuoteSerialized(text: string, comment: string | undefined): string {
+  return `\n${formatQuoteWithComment(text, comment)}\n`
+}
+
 /** Generate a unique quote id for one quote chip. */
 export function createQuoteId(): string {
   return crypto.randomUUID()
