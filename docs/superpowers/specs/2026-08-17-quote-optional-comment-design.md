@@ -19,7 +19,7 @@
 |---|---|
 | 选区浮层 | 恢复为单个「添加到对话」按钮；点击后短暂显示「已添加」 |
 | 气泡位置 | 锚定选中句子的第一行上方（Range 锚点 + `getClientRects()[0]`），随滚动/窗口缩放重算 |
-| 气泡内容 | 当前草稿中的引用序号；有评论时追加小圆点标记 |
+| 气泡内容 | 显示该引用的「引用 N」标签（与 composer chip、引用条一致）；有评论时追加小圆点标记 |
 | 评论编辑 | 点气泡弹出卡片：textarea 预填已有评论；「取消 / 保存」按钮 |
 | 保存语义 | 评论写回 chip 的 ref（v1 可选 `comment`）；再次点气泡可修改或清空评论 |
 | 保存实现 | 官方输入机 `slash/input-consume-token` 移除旧 chip + `slash/input-insert-reference` 同位插入新 chip；两个调用之间用 `ctx.conversation.input.for(actx).state.getSnapshot()` 读最新 draftRev |
@@ -75,27 +75,27 @@ InputMachine 插入 U+FFFC chip（官方撤销/复制/粘贴/偏移维护）
 
 - `QuotePopup` 去掉 `comment` 字段；选区浮层恢复单按钮，`showTransient` 恢复「added/failed 均 1.4s 后关闭」。
 - 新增气泡锚点：
-  - `anchorsRef: Map<occurrenceId, Range>`、`pendingAnchorRef`、`anchorTick`。
+  - `anchorsRef: Map<occurrenceId, Range>`、`pendingAnchorRef`、`editorIdRef`。渲染由 `bubbleRects` state 驱动，不需要额外版本号。
   - `addQuote` 插入前 `pendingAnchorRef.current = selection.getRangeAt(0).cloneRange()`；插入失败清空。
   - effect 对 `quotes` 做对账：删除失效锚点；pending 存在且出现新 occurrenceId 时挂接并清 pending；随后调用 `updateBubbleRects()`；正在编辑的引用消失时关闭编辑卡片。
 - `updateBubbleRects()`：遍历 anchorsRef，`range.getClientRects()[0]` 取第一行矩形，得到气泡中心 `left/top`，写入 `bubbleRects` state；scroll（capture）与 resize 时调用。
 - 气泡渲染：body portal，样式 `anchorBubble`；显示序号；`quoteComment(ref) !== null` 时加 `anchorBubbleDot` 标记；点击打开编辑卡片。
 - 评论卡片：body portal，`commentEditor` 卡片 + textarea（`quote.commentPlaceholder`）+ 取消/保存；Escape 或点击卡片外关闭；打开时预填 `quoteComment(ref) ?? ''`。
-- 保存：解码旧 payload → `normalizeQuoteComment` → 内容与现状一致则直接关闭；否则 `withQuoteComment` 构造新 payload，设 `pendingAnchorRef = 旧 Range.cloneRange()`，调用注入的 `updateQuote(offset, 新 ReferenceInsert)`；失败在卡片内显示「保存失败，请重试」，成功关闭卡片。
+- 保存：解码旧 payload → `normalizeQuoteComment` → 内容与现状一致则直接关闭；否则 `withQuoteComment` 构造新 payload，设 `pendingAnchorRef = 旧 Range.cloneRange()`，调用注入的 `updateQuote(offset, 新 ReferenceInsert)`。成功关闭卡片；失败时若返回 `restoredOccurrenceId` 则把编辑卡片与锚点迁移到回滚后的新 id 并显示「保存失败，请重试」，否则清空 pending。
 - 引用条展开区继续显示原文 + 「评论」小节。
 
 ### 3. `src/client/index.ts`
 
-- `QuoteDockInjected` 增加 `updateQuote(offset, reference): boolean`。
+- `QuoteDockInjected` 增加 `updateQuote(offset, next, previous): QuoteUpdateResult`（`{ saved, restoredOccurrenceId? }`）。
 - 实现：`const shell = ctx.conversation.input.for(actx)`；
-  1. `before = shell.state.getSnapshot()`，校验 phase 与 offset；
+  1. `before = shell.state.getSnapshot()`，校验 phase、offset 与 `before.draft[offset] === '\uFFFC'`；
   2. `actx.bail(actx, 'slash/input-consume-token', { guard: { kind: 'span', span: { start: offset, end: offset + 1, draftRev: before.draftRev } } })`；
   3. 成功后 `after = shell.state.getSnapshot()`，再 `actx.bail(actx, 'slash/input-insert-reference', { reference, span: { start: offset, end: offset, draftRev: after.draftRev } })`。
 
 ### 4. `src/client/locales.ts`
 
-zh：`quote.commentPlaceholder: '添加评论…'`、`quote.commentCancel: '取消'`、`quote.commentSave: '保存'`、`quote.commentSaveFailed: '保存失败，请重试'`、`quote.bubble: '引用 {index}'`、`quote.bubbleHasComment: '引用 {index}，已有评论'`；删除 `quote.confirm`。
-en 对应：`Add comment…` / `Cancel` / `Save` / `Could not save; try again` / `Quote {index}` / `Quote {index}, commented`。
+zh：`quote.commentPlaceholder: '添加评论…'`、`quote.commentCancel: '取消'`、`quote.commentSave: '保存'`、`quote.commentSaveFailed: '保存失败，请重试'`、`quote.bubbleHasComment: '{label}，已有评论'`；删除 `quote.confirm` 与 `quote.bubble`。
+en 对应：`Add comment…` / `Cancel` / `Save` / `Could not save; try again` / `{label}, commented`。
 
 ### 5. `src/client/QuoteDock.module.css`
 
@@ -121,5 +121,7 @@ en 对应：`Add comment…` / `Cancel` / `Save` / `Could not save; try again` /
 - [ ] 保存后引用条出现「评论」，气泡加圆点；发送时模型看到 `> 原文\n\n评论`。
 - [ ] 再次打开可修改或清空评论；清空后气泡圆点消失。
 - [ ] 删除引用或发送成功后气泡消失。
-- [ ] 滚动/缩放时气泡跟随原句第一行；中文 IME 输入评论不受影响。
+- [ ] 滚动/缩放时气泡跟随原句第一行，打开的评论卡片跟随气泡并夹在视口内；中文 IME 输入评论不受影响。
+- [ ] 点击已打开评论卡片的气泡会收起卡片；保存失败且回滚成功时，卡片与气泡仍指向恢复后的引用。
+- [ ] 保存评论走两次官方事务（consume + insert），Ctrl/Cmd+Z 需两步回到保存前状态。
 - [ ] zh/en 文案、深浅色主题正确；旧 chip ref 兼容。
