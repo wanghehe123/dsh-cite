@@ -1,60 +1,65 @@
-# 选区引用添加可选评论设计
+# 选区引用可选评论设计（第二轮：先引用、后注释）
 
 日期：2026-08-17
-状态：已确认，待实现
+状态：已确认，实现中
 
 ## 背景与目标
 
-现有「引用前文」功能：选中聊天正文 → 浮动按钮「添加到对话」→ 把选区做成引用 chip 进入草稿，发送时序列化为逐行 `> ` 引用块。
+第一轮实现把评论输入框放在选区浮层里。用户实际想要 Codex 式两步交互：
 
-本次改进让它像 Codex 一样支持**可选评论**：选区浮层变成「评论输入框 + 圆形确认按钮」，用户可以在引用一段前文的同时附带一句说明/追问；评论随引用一起发给模型。不输入评论时行为与现状完全一致。
+1. 选中聊天正文 → 浮层只出现「添加到对话」按钮。
+2. 点击后引用 chip 进入草稿，同时**选中句子第一行上方出现一个聊天气泡**，显示该引用在当前草稿中的序号（1、2、3…）。
+3. 点击气泡 → 弹出评论卡片（预填已有评论，输入框 + 取消/保存）。
+4. 保存后评论写回该引用 chip；引用条展开显示「评论」；气泡加「已有评论」标记。
+5. 取消、点卡片外、Esc 关闭卡片且不改动数据；删除引用或发送成功后气泡随引用消失。
 
 ## 已确认的决策
 
 | 决策点 | 结论 |
 |---|---|
-| 评论语义 | 评论随引用一起发给模型，不是纯 UI 备注 |
-| 模型看到的格式 | 引用块在前，空一行后跟评论文本；多条引用按出现顺序依次排列，评论紧跟自己的引用 |
-| 浮层交互 | 圆角卡片：文本输入框（单行）+ 蓝色圆形确认按钮（显示新引用序号）；Enter 或点按钮确认；Esc/点击外部关闭并丢弃未确认评论 |
-| 数据模型 | 评论存入引用 chip 的 `QuoteRefPayload`（v=1 增加可选 `comment?: string`），不另建状态表、不把评论当普通草稿文本插入 |
-| 兼容性 | 旧 chip（无 comment）可正常解码；新版 chip 在旧插件上最多丢评论，不会报错 |
-| 评论上限 | 4,000 Unicode 码点；超出截断并追加本地化截断标记 |
-| 麦克风图标 | 不实现语音输入；DSH 客户端没有可用的语音能力，不放装饰性死按钮 |
-| 评论编辑 | 加入后不支持再编辑；要改就移除后重新引用 |
+| 选区浮层 | 恢复为单个「添加到对话」按钮；点击后短暂显示「已添加」 |
+| 气泡位置 | 锚定选中句子的第一行上方（Range 锚点 + `getClientRects()[0]`），随滚动/窗口缩放重算 |
+| 气泡内容 | 当前草稿中的引用序号；有评论时追加小圆点标记 |
+| 评论编辑 | 点气泡弹出卡片：textarea 预填已有评论；「取消 / 保存」按钮 |
+| 保存语义 | 评论写回 chip 的 ref（v1 可选 `comment`）；再次点气泡可修改或清空评论 |
+| 保存实现 | 官方输入机 `slash/input-consume-token` 移除旧 chip + `slash/input-insert-reference` 同位插入新 chip；两个调用之间用 `ctx.conversation.input.for(actx).state.getSnapshot()` 读最新 draftRev |
+| 评论模型格式 | 引用块在前，空一行后跟评论；多条引用各带各的评论 |
+| 评论上限 | 4,000 Unicode 码点，超出截断并追加截断标记 |
+| 序列化分隔 | `serialize` 与 `clipboardText` 都用 `formatQuoteSerialized`（首尾换行），防止相邻 chip 粘连 |
 
 ## 非目标
 
 - 不做语音输入。
-- 不支持加入引用后再编辑评论。
-- 不改变现有「引用条从 `input.occurrences` 派生、不维护第二份状态」的原则。
-- 不把评论插入草稿正文或作为独立消息发送。
-- 不改变引用原文的 16,000 码点上限与 `> ` 序列化格式。
+- 气泡不是新消息，不写入会话日志。
+- 不支持在气泡上直接删除引用（仍用引用条删除）。
+- 不跨会话，不使用宿主侧元数据。
 
 ## 架构与数据流
 
 ```
 聊天正文选区
-   │  selectionchange / scroll / resize
+   │ selectionchange
    ▼
-选区浮层（圆角卡片）
-   ├─ 输入框：可选评论（trim → 4,000 码点截断）
-   └─ 圆形确认按钮：显示「引用 N」（N = 当前草稿引用数 + 1）
-   │  Enter / 点击按钮
-   ▼
-actx.bail(actx, 'slash/input-insert-reference',
-          { reference, span: { start: draft.length, end: draft.length, draftRev } })
-   │  reference.ref = base64url(JSON: { v: 1, id, text, truncated, comment? })
+选区浮层「添加到对话」
+   │ 规范化原文 → cloneRange() 作锚点 → 插入无评论 chip
    ▼
 InputMachine 插入 U+FFFC chip（官方撤销/复制/粘贴/偏移维护）
    │
+   ├─► 气泡层（body portal）：
+   │     由 quotes + anchorsRef 派生，每个引用一个气泡；
+   │     显示序号，有评论加小圆点；
+   │     点击气泡 → 评论卡片（取消/保存）
+   │       保存：normalizeQuoteComment → withQuoteComment(payload)
+   │              → updateQuote(offset, 新 ReferenceInsert)
+   │              → consume 旧 chip + insert 新 chip（同位、同 label）
+   │              → 新 occurrenceId 承接旧 Range 锚点
+   │
    ├─► conversation.input.dock 引用条：
-   │     从 input.occurrences 过滤 source === 'dsh-sessions-quote'
-   │     展开时显示原文 + 评论小节（有评论才显示）；移除引用时评论一并消失
+   │     展开显示原文 + 「评论」小节；移除引用时气泡同步消失
    │
    └─► 提交时 codec.serialize(ref)
-          → formatQuoteWithComment(text, comment)
-          → 无评论：'> 原文'（与现状逐字节一致）
-          → 有评论：'> 原文\n\n评论'
+          → formatQuoteSerialized(text, comment)
+          → sink trim 后：'> 原文\n\n评论'（无评论则只有引用块）
 ```
 
 ## 文件与改动
@@ -63,67 +68,58 @@ InputMachine 插入 U+FFFC chip（官方撤销/复制/粘贴/偏移维护）
 
 ### 1. `src/client/quote.ts`
 
-- 新增 `MAX_COMMENT_CHARS = 4_000`。
-- `QuoteRefPayload` 增加 `comment?: string`；`v` 仍为 `1`。
-- `decodeQuoteRef`：`comment` 存在时必须是 `string`，缺失合法；其余校验不变。
-- 新增 `normalizeQuoteComment(raw, truncatedMarker): { text: string; truncated: boolean }`：`trim`；超 4,000 码点按 `Array.from` 截断并追加标记；空串返回 `{ text: '', truncated: false }`。
-- 新增 `formatQuoteWithComment(text, comment?): string`：
-  - `comment` 为 undefined / 空串时返回 `formatQuoteBlock(text)`；
-  - 否则返回 `` `${formatQuoteBlock(text)}\n\n${comment}` ``。
-- 新增 `formatQuoteSerialized(text, comment?): string`：返回 `` `\n${formatQuoteWithComment(text, comment)}\n` ``，供 codec 的 prompt 序列化使用；官方 sink 最终 `trim()`，首尾换行不会进入模型文本，但内部换行保证相邻 chip（官方只插一个空格）之间引用块和评论不会粘连成一行。
-- 新增 `quoteComment(ref): string | null` 供引用条读取；畸形 ref 返回 null。
+- 保持现有 payload/规范化/序列化函数不变。
+- 新增 `withQuoteComment(payload, comment): QuoteRefPayload`：`comment` 为 undefined 时返回不含 `comment` 键的副本；否则返回带 `comment` 的副本（满足 `exactOptionalPropertyTypes`）。
 
-### 2. `src/client/quote-source.ts`
+### 2. `src/client/QuoteDock.tsx`
 
-- `codec.serialize` 与 `codec.clipboardText` 都用 `formatQuoteSerialized(text, comment)`（带首尾换行分隔）：发送和复制相邻 chip 都不会让引用块/评论粘连；`ReferenceInsert.clipboardText` 在 `QuoteDock.addQuote` 里同样用 `formatQuoteSerialized`。解码失败行为不变（抛错、阻断发送）。
+- `QuotePopup` 去掉 `comment` 字段；选区浮层恢复单按钮，`showTransient` 恢复「added/failed 均 1.4s 后关闭」。
+- 新增气泡锚点：
+  - `anchorsRef: Map<occurrenceId, Range>`、`pendingAnchorRef`、`anchorTick`。
+  - `addQuote` 插入前 `pendingAnchorRef.current = selection.getRangeAt(0).cloneRange()`；插入失败清空。
+  - effect 对 `quotes` 做对账：删除失效锚点；pending 存在且出现新 occurrenceId 时挂接并清 pending；随后调用 `updateBubbleRects()`；正在编辑的引用消失时关闭编辑卡片。
+- `updateBubbleRects()`：遍历 anchorsRef，`range.getClientRects()[0]` 取第一行矩形，得到气泡中心 `left/top`，写入 `bubbleRects` state；scroll（capture）与 resize 时调用。
+- 气泡渲染：body portal，样式 `anchorBubble`；显示序号；`quoteComment(ref) !== null` 时加 `anchorBubbleDot` 标记；点击打开编辑卡片。
+- 评论卡片：body portal，`commentEditor` 卡片 + textarea（`quote.commentPlaceholder`）+ 取消/保存；Escape 或点击卡片外关闭；打开时预填 `quoteComment(ref) ?? ''`。
+- 保存：解码旧 payload → `normalizeQuoteComment` → 内容与现状一致则直接关闭；否则 `withQuoteComment` 构造新 payload，设 `pendingAnchorRef = 旧 Range.cloneRange()`，调用注入的 `updateQuote(offset, 新 ReferenceInsert)`；失败在卡片内显示「保存失败，请重试」，成功关闭卡片。
+- 引用条展开区继续显示原文 + 「评论」小节。
 
-### 3. `src/client/QuoteDock.tsx`
+### 3. `src/client/index.ts`
 
-- `QuotePopup` 增加 `comment: string`，`kind` 不变（`offer | added | failed`）。
-- 浮层从单按钮改为卡片：
-  - `<input>`（`data-dsh-sessions-quote-comment`），placeholder 用 `t('quote.commentPlaceholder')`；`maxLength` 不设（按码点截断在确认时做）；`onKeyDown`：Enter 确认、Escape 关闭；Enter 在 IME 组词中（`event.nativeEvent.isComposing === true`）时只提交组词、不触发添加。
-  - 圆形确认按钮显示 `index`（即将成为的「引用 N」），aria-label 用 `t('quote.confirm', { index })`；点击调 `addQuote()`。
-- 保留选区打字：卡片根节点 `onMouseDown={e => e.preventDefault()}`；输入框 `onMouseDown` 手动 `event.preventDefault()` 后 `focus()`，阻止浏览器折叠选区。
-- 聚焦期间只暂停 `selectionchange` 重定位：`updatePopup` 在事件为 `selectionchange` 且 `document.activeElement` 位于浮层内时直接返回；scroll/resize 仍重定位，且重定位时保留同文本选区已输入的评论。
-- 点击外部关闭：`document` 捕获阶段 `pointerdown` 监听，目标不在 `popoverRef.current` 内时执行 `hideOffer()`（保留 `added` 瞬态），补齐点击非文本目标不触发 `selectionchange` 的场景。
-- 浮层位置保持现有计算（选区上方优先、下方兜底、视口夹取）；不做截图里的右对齐改造，避免长选区下跳动。
-- 确认流程：校验 `input.phase === 'plain'` → 规范化原文与评论 → 构造带 `comment` 的 payload → 插入 chip → 清选区 → `showTransient('added')` → 聚焦输入框末尾。
-  - 瞬态渲染：`kind === 'offer'` 时渲染输入卡片；`added` / `failed` 时渲染现有样式的紧凑胶囊文案。`failed` 不清空已输入评论，1.4s 后回到 `offer`（保留评论，允许直接重试），不自动关闭浮层；只有 Esc、选区消失或点击外部才丢弃评论。
-- 引用条展开区：原文之后，`quoteComment(ref)` 非空时追加「评论」小节（label + 文本，样式沿用现有 `body` 的代码字体块）。
-- 引用条折叠行不变。
+- `QuoteDockInjected` 增加 `updateQuote(offset, reference): boolean`。
+- 实现：`const shell = ctx.conversation.input.for(actx)`；
+  1. `before = shell.state.getSnapshot()`，校验 phase 与 offset；
+  2. `actx.bail(actx, 'slash/input-consume-token', { guard: { kind: 'span', span: { start: offset, end: offset + 1, draftRev: before.draftRev } } })`；
+  3. 成功后 `after = shell.state.getSnapshot()`，再 `actx.bail(actx, 'slash/input-insert-reference', { reference, span: { start: offset, end: offset, draftRev: after.draftRev } })`。
 
 ### 4. `src/client/locales.ts`
 
-zh 增加：`quote.commentPlaceholder: '添加可选评论…'`、`quote.commentLabel: '评论'`、`quote.confirm: '添加为引用 {index}'`。
-en 增加：`quote.commentPlaceholder: 'Add optional comment…'`、`quote.commentLabel: 'Comment'`、`quote.confirm: 'Add as quote {index}'`。
-评论截断复用 `quote.truncated`。
+zh：`quote.commentPlaceholder: '添加评论…'`、`quote.commentCancel: '取消'`、`quote.commentSave: '保存'`、`quote.commentSaveFailed: '保存失败，请重试'`、`quote.bubble: '引用 {index}'`、`quote.bubbleHasComment: '引用 {index}，已有评论'`；删除 `quote.confirm`。
+en 对应：`Add comment…` / `Cancel` / `Save` / `Could not save; try again` / `Quote {index}` / `Quote {index}, commented`。
 
 ### 5. `src/client/QuoteDock.module.css`
 
-- 复用现有 `--dsw-*` 语义 token。
-- 新增 `.popoverCard`（flex 卡片）、`.commentInput`（flex:1、无边框、背景透明、颜色继承）、`.confirmButton`（蓝色圆形、显示序号）、`.commentBody` 等类；`popover` 定位逻辑不变。
+- 删除不再使用的 `.popoverCard / .commentInput / .confirmButton`。
+- 新增 `.anchorBubble`（圆角气泡 + 小尾巴）、`.anchorBubbleDot`（已有评论标记）、`.commentEditor`、`.editorInput`、`.editorActions`、`.editorButton`、`.editorSave`、`.editorError`。
+- 全部使用 `--dsw-*` 语义 token。
 
 ## 测试
 
-- `tests/quote.spec.ts`：
-  - `normalizeQuoteComment`：trim、空串、4,000 码点边界、emoji 码点截断。
-  - `formatQuoteWithComment`：无评论等于 `formatQuoteBlock`；单行/多行引用 + 评论；评论为空串时退回纯引用。
-  - ref 往返：带 comment 的 payload 编码解码一致；旧 payload（无 comment）解码后 `comment === undefined`；`comment` 非字符串时报 malformed。
-  - `quoteComment`：正常读取、畸形 ref 返回 null。
-- `tests/quote-source.spec.ts`：
-  - serialize 与 clipboardText 都输出 `\n> 引用\n\n评论\n`。
-  - 无评论 payload 经 sink `trim()` 后与旧格式一致（回归）。
-  - 相邻多个 chip 分别模拟官方 sink 拼接与官方 copy 拼接后，各引用块与评论互不粘连。
-  - 畸形 ref 仍 reject。
-- 回归：现有全部 vitest、`npx tsc -b tsconfig.json`、`npm run build`。
+- `tests/quote.spec.ts` 新增 `withQuoteComment`：
+  - 带 comment 的 payload 返回包含 comment 的副本且不修改原对象；
+  - comment 为 undefined / 空串时返回无 comment 键的副本；
+  - 保持 v/id/text/truncated 不变。
+- 现有 quote / quote-source 用例全部回归（序列化、复制、相邻 chip、旧 ref 兼容）。
+- `npx vitest run`、`npx tsc -b tsconfig.json`、`npx -y -p node@22 npm run build` 全绿。
 
 ## 验收清单
 
-- [ ] 选中聊天正文后浮层显示评论输入框与圆形「引用 N」按钮。
-- [ ] 不输入评论直接点按钮：行为与现状一致，模型只看到 `> 原文`。
-- [ ] 输入评论后 Enter/点按钮：草稿出现 chip，引用条展开能看到原文和「评论」小节，发送后模型看到 `> 原文\n\n评论`。
-- [ ] 连续添加多条（有评论/无评论混合）：模型按顺序收到各自引用块，评论紧跟对应引用。
-- [ ] 打字期间选区不丢、浮层不闪动；Esc/点击外部关闭；空选区不显示浮层。
-- [ ] 移除引用时评论一并移除；撤销插入同样生效（chip 级原子性）。
-- [ ] zh/en 文案与深浅色主题正确。
-- [ ] 旧版本生成的 chip ref（无 comment）仍能正常解码和序列化。
+- [ ] 选中正文只出现「添加到对话」按钮。
+- [ ] 添加后引用 chip 进入草稿，且选中句子上方出现带序号的气泡。
+- [ ] 连续添加多条：气泡编号 1/2/3，对应引用条顺序。
+- [ ] 点击气泡弹出评论卡片，预填已有评论；取消/Esc/点外部不改变数据。
+- [ ] 保存后引用条出现「评论」，气泡加圆点；发送时模型看到 `> 原文\n\n评论`。
+- [ ] 再次打开可修改或清空评论；清空后气泡圆点消失。
+- [ ] 删除引用或发送成功后气泡消失。
+- [ ] 滚动/缩放时气泡跟随原句第一行；中文 IME 输入评论不受影响。
+- [ ] zh/en 文案、深浅色主题正确；旧 chip ref 兼容。
