@@ -73,7 +73,7 @@ api-proxy 的 settings 命名空间白名单不覆盖第三方包，因此卡片
 2. 点击按钮：
    - 引用文本先 `trim`，超过 16,000 Unicode 码点时截断并追加本地化截断标记；
    - 在草稿末尾插入一个 `dsh-sessions-quote` chip，输入框内显示「引用 N」小标签；
-   - 同时在选中句子的第一行上方出现一个聊天气泡，显示该引用的序号。
+   - 同时在选中句子的第一行上方出现一个聊天气泡，显示「引用 N」标签。
 3. 点击气泡：
    - 弹出评论卡片，输入框预填该引用已有的评论（没有则为空）；
    - 点「保存」把评论写回该引用的 chip，气泡上出现小圆点表示已有评论；
@@ -90,7 +90,7 @@ api-proxy 的 settings 命名空间白名单不覆盖第三方包，因此卡片
 
 - **触发条件**：仅当选区位于会话正文（`[data-conversation-scroll]` 内）且不在输入区/引用条（`[data-composer-seat]` 内）时显示「添加到对话」按钮；空选区、输入阶段非 `plain` 时不显示。
 - **气泡锚点**：添加引用前克隆选区 `Range`，气泡取 `range.getClientRects()[0]`（第一行）定位到句子上方；滚动与窗口缩放时重算位置。上游刷新导致节点卸载时该气泡会消失，重新引用即可恢复。
-- **评论保存**：点气泡预填已有评论；保存走官方输入机「`slash/input-consume-token` 移除旧 chip + `slash/input-insert-reference` 同位插入新 chip」，两次调用之间用 `ctx.conversation.input.for(actx).state.getSnapshot()` 读取最新 draftRev；失败回滚旧 chip 并在卡片内提示重试。
+- **评论保存**：点气泡预填已有评论；保存走官方输入机「`slash/input-consume-token` 移除旧 chip + `slash/input-insert-reference` 同位插入新 chip」，两次调用之间用 `ctx.conversation.input.for(actx).state.getSnapshot()` 读取最新 draftRev；失败回滚旧 chip 并在卡片内提示重试。保存是两次输入机事务，Ctrl/Cmd+Z 需要两步回到保存前状态。
 - **插入位置**：统一追加到草稿末尾，插入后自动聚焦输入框并把光标放到末尾。
 - **数据来源**：引用条不维护第二份状态，完全从官方输入机的 `input.occurrences` 过滤 `source === 'dsh-sessions-quote'` 派生。因此撤销、重做、复制、粘贴、手动删除 chip 都与引用条天然同步。
 - **官方管线**：插入走 `slash/input-insert-reference`，移除走 `slash/input-consume-token`（span CAS），由 `InputMachine` 负责占位符、偏移维护与撤销历史。
