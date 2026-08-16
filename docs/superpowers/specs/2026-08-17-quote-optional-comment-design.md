@@ -75,7 +75,7 @@ InputMachine 插入 U+FFFC chip（官方撤销/复制/粘贴/偏移维护）
 
 ### 2. `src/client/quote-source.ts`
 
-- `codec.serialize` 改用 `formatQuoteSerialized(text, comment)`（带首尾换行分隔）；`codec.clipboardText` 继续用 `formatQuoteWithComment(text, comment)` 输出干净的单条文本。解码失败行为不变（抛错、阻断发送）。
+- `codec.serialize` 与 `codec.clipboardText` 都用 `formatQuoteSerialized(text, comment)`（带首尾换行分隔）：发送和复制相邻 chip 都不会让引用块/评论粘连；`ReferenceInsert.clipboardText` 在 `QuoteDock.addQuote` 里同样用 `formatQuoteSerialized`。解码失败行为不变（抛错、阻断发送）。
 
 ### 3. `src/client/QuoteDock.tsx`
 
@@ -84,7 +84,8 @@ InputMachine 插入 U+FFFC chip（官方撤销/复制/粘贴/偏移维护）
   - `<input>`（`data-dsh-sessions-quote-comment`），placeholder 用 `t('quote.commentPlaceholder')`；`maxLength` 不设（按码点截断在确认时做）；`onKeyDown`：Enter 确认、Escape 关闭；Enter 在 IME 组词中（`event.nativeEvent.isComposing === true`）时只提交组词、不触发添加。
   - 圆形确认按钮显示 `index`（即将成为的「引用 N」），aria-label 用 `t('quote.confirm', { index })`；点击调 `addQuote()`。
 - 保留选区打字：卡片根节点 `onMouseDown={e => e.preventDefault()}`；输入框 `onMouseDown` 手动 `event.preventDefault()` 后 `focus()`，阻止浏览器折叠选区。
-- 聚焦期间暂停重定位：`updatePopup` 开头检查 `document.activeElement` 是否在浮层内（`data-dsh-sessions-quote-popover`），是则直接返回；失焦后恢复由 `selectionchange` 驱动。
+- 聚焦期间只暂停 `selectionchange` 重定位：`updatePopup` 在事件为 `selectionchange` 且 `document.activeElement` 位于浮层内时直接返回；scroll/resize 仍重定位，且重定位时保留同文本选区已输入的评论。
+- 点击外部关闭：`document` 捕获阶段 `pointerdown` 监听，目标不在 `popoverRef.current` 内时执行 `hideOffer()`（保留 `added` 瞬态），补齐点击非文本目标不触发 `selectionchange` 的场景。
 - 浮层位置保持现有计算（选区上方优先、下方兜底、视口夹取）；不做截图里的右对齐改造，避免长选区下跳动。
 - 确认流程：校验 `input.phase === 'plain'` → 规范化原文与评论 → 构造带 `comment` 的 payload → 插入 chip → 清选区 → `showTransient('added')` → 聚焦输入框末尾。
   - 瞬态渲染：`kind === 'offer'` 时渲染输入卡片；`added` / `failed` 时渲染现有样式的紧凑胶囊文案。`failed` 不清空已输入评论，1.4s 后回到 `offer`（保留评论，允许直接重试），不自动关闭浮层；只有 Esc、选区消失或点击外部才丢弃评论。
@@ -110,9 +111,9 @@ en 增加：`quote.commentPlaceholder: 'Add optional comment…'`、`quote.comme
   - ref 往返：带 comment 的 payload 编码解码一致；旧 payload（无 comment）解码后 `comment === undefined`；`comment` 非字符串时报 malformed。
   - `quoteComment`：正常读取、畸形 ref 返回 null。
 - `tests/quote-source.spec.ts`：
-  - serialize 输出 `\n> 引用\n\n评论\n`，clipboardText 输出 `> 引用\n\n评论`。
+  - serialize 与 clipboardText 都输出 `\n> 引用\n\n评论\n`。
   - 无评论 payload 经 sink `trim()` 后与旧格式一致（回归）。
-  - 相邻多个 chip 模拟官方 sink 拼接后，各引用块与评论互不粘连。
+  - 相邻多个 chip 分别模拟官方 sink 拼接与官方 copy 拼接后，各引用块与评论互不粘连。
   - 畸形 ref 仍 reject。
 - 回归：现有全部 vitest、`npx tsc -b tsconfig.json`、`npm run build`。
 
