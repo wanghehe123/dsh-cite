@@ -1,9 +1,9 @@
 /**
  * Quote capture surface registered into `conversation.input.dock`: a
- * document-level selection popover plus the quote bar above the composer.
- * Quote state is derived entirely from InputState.occurrences — the same
- * chips the input machine already tracks — so undo, copy/paste, draft edits,
- * and manual chip deletion stay in sync for free.
+ * document-level selection popover, per-quote anchor bubbles above the
+ * selected sentence, a comment editor launched from each bubble, and the
+ * quote bar above the composer. Quote state is derived entirely from
+ * InputState.occurrences — the same chips the input machine already tracks.
  */
 import clsx from 'clsx'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
@@ -15,8 +15,9 @@ import type { ReferenceInsert, TokenSpan } from '@deepseek-ai/dsh-client-ui-inpu
 import type { NS } from './locales.ts'
 import { QUOTE_SOURCE_NAME } from './quote-source.ts'
 import {
-  createQuoteId, encodeQuoteRef, formatQuoteSerialized, normalizeQuoteComment,
-  normalizeQuoteText, quoteComment, quoteFullText, quotePreview, type QuoteRefPayload,
+  createQuoteId, decodeQuoteRef, encodeQuoteRef, formatQuoteSerialized,
+  normalizeQuoteComment, normalizeQuoteText, quoteComment, quoteFullText,
+  quotePreview, withQuoteComment, type QuoteRefPayload,
 } from './quote.ts'
 import css from './QuoteDock.module.css'
 
@@ -24,6 +25,12 @@ import css from './QuoteDock.module.css'
 export interface QuoteDockInjected {
   insertQuote(reference: ReferenceInsert, span: TokenSpan): boolean
   removeQuoteAt(span: TokenSpan): boolean
+  /**
+   * Replace the reference at `offset` in place: consume the old chip, then
+   * insert `next` at the same draft offset with a fresh draftRev. Falls back
+   * to re-inserting `previous` when the next insert is rejected.
+   */
+  updateQuote(offset: number, next: ReferenceInsert, previous: ReferenceInsert): boolean
 }
 
 /** Full props: the input.dock owner share, the locale seat, and the bail face. */
@@ -36,8 +43,20 @@ interface QuotePopup {
   top: number
   above: boolean
   text: string
-  comment: string
   kind: 'offer' | 'added' | 'failed'
+}
+
+/** Viewport position of one quote anchor bubble. */
+interface BubbleRect {
+  left: number
+  top: number
+}
+
+/** Open comment editor anchored below one quote bubble. */
+interface EditorState {
+  occurrenceId: number
+  left: number
+  top: number
 }
 
 /** Small quote-mark glyph; the platform has no quote icon. */
@@ -53,18 +72,30 @@ function QuoteGlyph(): ReactElement {
 }
 
 /**
- * Render the quote bar and the selection popover.
- * @param props - live InputZone snapshot plus the scoped insert/remove face.
- * @returns the dock row when quotes exist, and the portaled popover.
+ * Render the quote bar, the selection popover, the per-quote anchor bubbles,
+ * and the comment editor.
+ * @param props - live InputZone snapshot plus the scoped insert/remove/update face.
+ * @returns the dock row when quotes exist, plus portaled floating layers.
  */
-export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockProps): ReactElement {
+export function QuoteDock({
+  input,
+  insertQuote,
+  removeQuoteAt,
+  updateQuote,
+  t,
+}: QuoteDockProps): ReactElement {
   const [popup, setPopup] = useState<QuotePopup | null>(null)
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set())
+  const [bubbleRects, setBubbleRects] = useState<ReadonlyMap<number, BubbleRect>>(() => new Map())
+  const [editor, setEditor] = useState<EditorState | null>(null)
+  const [commentDraft, setCommentDraft] = useState('')
+  const [saveFailed, setSaveFailed] = useState(false)
   const inputRef = useRef(input)
   const dismissTimerRef = useRef<number | undefined>(undefined)
-  const failedTimerRef = useRef<number | undefined>(undefined)
   const popoverRef = useRef<HTMLDivElement | null>(null)
-  const commentInputRef = useRef<HTMLInputElement | null>(null)
+  const editorRef = useRef<HTMLDivElement | null>(null)
+  const anchorsRef = useRef<ReadonlyMap<number, Range>>(new Map())
+  const pendingAnchorRef = useRef<Range | null>(null)
 
   useEffect(() => { inputRef.current = input }, [input])
 
@@ -80,14 +111,7 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
     setPopup(current => current === null || current.kind === 'added' ? current : null)
   }, [])
 
-  const updatePopup = useCallback((event?: Event) => {
-    if (
-      event?.type === 'selectionchange'
-      && popoverRef.current?.contains(document.activeElement)
-    ) {
-      if (inputRef.current.phase !== 'plain') hideOffer()
-      return
-    }
+  const updatePopup = useCallback(() => {
     const selection = window.getSelection()
     if (selection === null || selection.isCollapsed || selection.rangeCount === 0) {
       hideOffer()
@@ -123,50 +147,87 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
     const left = Math.min(Math.max(rect.left + rect.width / 2, 12), maxLeft)
     const above = rect.top >= 48
     const top = above ? rect.top - 8 : rect.bottom + 8
-    setPopup(current => ({
-      left,
-      top,
-      above,
-      text,
-      comment: current?.text === text ? current.comment : '',
-      kind: 'offer',
-    }))
+    setPopup({ left, top, above, text, kind: 'offer' })
   }, [hideOffer])
 
+  /** Recompute every anchored bubble from its live DOM Range. */
+  const updateBubbleRects = useCallback(() => {
+    const next = new Map<number, BubbleRect>()
+    for (const [occurrenceId, range] of anchorsRef.current) {
+      try {
+        const first = range.getClientRects().item(0) ?? range.getBoundingClientRect()
+        if (first.width === 0 && first.height === 0) continue
+        next.set(occurrenceId, { left: first.left + first.width / 2, top: first.top })
+      } catch {
+        // The conversation re-rendered and detached this range; drop the bubble.
+      }
+    }
+    setBubbleRects(next)
+  }, [])
+
   useEffect(() => {
+    const onScroll = () => {
+      updatePopup()
+      updateBubbleRects()
+    }
+    const onResize = () => {
+      updatePopup()
+      updateBubbleRects()
+    }
     document.addEventListener('selectionchange', updatePopup)
-    document.addEventListener('scroll', updatePopup, true)
-    window.addEventListener('resize', updatePopup)
+    document.addEventListener('scroll', onScroll, true)
+    window.addEventListener('resize', onResize)
     return () => {
       document.removeEventListener('selectionchange', updatePopup)
-      document.removeEventListener('scroll', updatePopup, true)
-      window.removeEventListener('resize', updatePopup)
+      document.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', onResize)
       window.clearTimeout(dismissTimerRef.current)
-      window.clearTimeout(failedTimerRef.current)
     }
-  }, [updatePopup])
+  }, [updatePopup, updateBubbleRects])
+
+  /** Reconcile anchors with the occurrence table and attach the pending range. */
+  useEffect(() => {
+    const ids = new Set(quotes.map(quote => quote.occurrenceId))
+    let changed = false
+    for (const occurrenceId of [...anchorsRef.current.keys()]) {
+      if (ids.has(occurrenceId)) continue
+      const next = new Map(anchorsRef.current)
+      next.delete(occurrenceId)
+      anchorsRef.current = next
+      changed = true
+    }
+    const pending = pendingAnchorRef.current
+    if (pending !== null) {
+      const newOccurrence = quotes.find(quote => !anchorsRef.current.has(quote.occurrenceId))
+      if (newOccurrence !== undefined) {
+        const next = new Map(anchorsRef.current)
+        next.set(newOccurrence.occurrenceId, pending)
+        anchorsRef.current = next
+        pendingAnchorRef.current = null
+        changed = true
+      }
+    }
+    setEditor(current => current === null || ids.has(current.occurrenceId) ? current : null)
+    if (changed) updateBubbleRects()
+  }, [quotes, updateBubbleRects])
 
   useEffect(() => {
     const closeOnOutsidePointer = (event: PointerEvent) => {
       const target = event.target
       if (target instanceof Node && popoverRef.current?.contains(target)) return
       hideOffer()
+      if (editor === null) return
+      if (target instanceof Node && editorRef.current?.contains(target)) return
+      setEditor(null)
+      setSaveFailed(false)
     }
     document.addEventListener('pointerdown', closeOnOutsidePointer, true)
     return () => { document.removeEventListener('pointerdown', closeOnOutsidePointer, true) }
-  }, [hideOffer])
+  }, [hideOffer, editor])
 
   const showTransient = useCallback((kind: 'added' | 'failed') => {
     setPopup(current => current === null ? null : { ...current, kind })
-    window.clearTimeout(dismissTimerRef.current)
-    window.clearTimeout(failedTimerRef.current)
-    if (kind === 'added') {
-      scheduleDismiss()
-      return
-    }
-    failedTimerRef.current = window.setTimeout(() => {
-      setPopup(current => current === null || current.kind !== 'failed' ? current : { ...current, kind: 'offer' })
-    }, 1400)
+    scheduleDismiss()
   }, [scheduleDismiss])
 
   const focusComposerAtEnd = useCallback(() => {
@@ -191,8 +252,10 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
       hideOffer()
       return
     }
-    const normalizedComment = normalizeQuoteComment(popup.comment, t('quote.truncated'))
-    const comment = normalizedComment.text === '' ? undefined : normalizedComment.text
+    const selection = window.getSelection()
+    const anchor = selection !== null && selection.rangeCount > 0
+      ? selection.getRangeAt(0).cloneRange()
+      : null
     const index = snapshot.occurrences
       .filter(occurrence => occurrence.source === QUOTE_SOURCE_NAME).length + 1
     const payload: QuoteRefPayload = {
@@ -200,13 +263,12 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
       id: createQuoteId(),
       text: normalized.text,
       truncated: normalized.truncated,
-      ...(comment === undefined ? {} : { comment }),
     }
     const reference: ReferenceInsert = {
       source: QUOTE_SOURCE_NAME,
       ref: encodeQuoteRef(payload),
       label: t('quote.chip', { index }),
-      clipboardText: formatQuoteSerialized(normalized.text, comment),
+      clipboardText: formatQuoteSerialized(normalized.text, undefined),
     }
     const span: TokenSpan = {
       start: snapshot.draft.length,
@@ -217,10 +279,80 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
       showTransient('failed')
       return
     }
+    pendingAnchorRef.current = anchor
     window.getSelection()?.removeAllRanges()
     showTransient('added')
     focusComposerAtEnd()
   }, [popup, insertQuote, showTransient, hideOffer, focusComposerAtEnd, t])
+
+  const closeEditor = useCallback(() => {
+    setEditor(null)
+    setSaveFailed(false)
+  }, [])
+
+  const openEditor = useCallback((occurrenceId: number) => {
+    const occurrence = quotes.find(quote => quote.occurrenceId === occurrenceId)
+    if (occurrence === undefined) return
+    setCommentDraft(quoteComment(occurrence.ref) ?? '')
+    setSaveFailed(false)
+    const bubble = bubbleRects.get(occurrenceId)
+    if (bubble === undefined) {
+      setEditor({
+        occurrenceId,
+        left: Math.max(12, window.innerWidth / 2 - 132),
+        top: Math.max(64, window.innerHeight / 3),
+      })
+      return
+    }
+    setEditor({
+      occurrenceId,
+      left: Math.min(Math.max(bubble.left - 132, 12), Math.max(12, window.innerWidth - 276)),
+      top: bubble.top + 32,
+    })
+  }, [quotes, bubbleRects])
+
+  const saveComment = useCallback(() => {
+    if (editor === null) return
+    const occurrence = quotes.find(quote => quote.occurrenceId === editor.occurrenceId)
+    if (occurrence === undefined) {
+      closeEditor()
+      return
+    }
+    let payload: QuoteRefPayload
+    try {
+      payload = decodeQuoteRef(occurrence.ref)
+    } catch {
+      setSaveFailed(true)
+      return
+    }
+    const normalized = normalizeQuoteComment(commentDraft, t('quote.truncated'))
+    const comment = normalized.text === '' ? undefined : normalized.text
+    if ((payload.comment ?? '') === (comment ?? '')) {
+      closeEditor()
+      return
+    }
+    const nextPayload = withQuoteComment(payload, comment)
+    const next: ReferenceInsert = {
+      source: QUOTE_SOURCE_NAME,
+      ref: encodeQuoteRef(nextPayload),
+      label: occurrence.label,
+      clipboardText: formatQuoteSerialized(nextPayload.text, nextPayload.comment),
+    }
+    const previous: ReferenceInsert = {
+      source: QUOTE_SOURCE_NAME,
+      ref: occurrence.ref,
+      label: occurrence.label,
+      clipboardText: occurrence.clipboardText,
+    }
+    const anchor = anchorsRef.current.get(occurrence.occurrenceId)
+    pendingAnchorRef.current = anchor === undefined ? null : anchor.cloneRange()
+    if (!updateQuote(occurrence.offset, next, previous)) {
+      pendingAnchorRef.current = null
+      setSaveFailed(true)
+      return
+    }
+    closeEditor()
+  }, [editor, quotes, commentDraft, updateQuote, closeEditor, t])
 
   const toggleExpanded = useCallback((occurrenceId: number) => {
     setExpanded(current => {
@@ -243,72 +375,98 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
     })
   }, [removeQuoteAt])
 
+  const bubbleLayer = quotes.map(quote => {
+    const bubble = bubbleRects.get(quote.occurrenceId)
+    if (bubble === undefined) return null
+    const index = quotes.findIndex(item => item.occurrenceId === quote.occurrenceId) + 1
+    const hasComment = quoteComment(quote.ref) !== null
+    return createPortal(
+      <button
+        type="button"
+        className={clsx(css.anchorBubble, hasComment && css.anchorBubbleCommented)}
+        style={{ left: bubble.left, top: bubble.top - 32 }}
+        aria-label={t(hasComment ? 'quote.bubbleHasComment' : 'quote.bubble', { index })}
+        title={t(hasComment ? 'quote.bubbleHasComment' : 'quote.bubble', { index })}
+        onClick={() => { openEditor(quote.occurrenceId) }}
+      >
+        <QuoteGlyph />
+        <span>{index}</span>
+        {hasComment ? <span className={css.anchorBubbleDot} aria-hidden="true" /> : null}
+      </button>,
+      document.body,
+      `dsh-sessions-quote-bubble-${quote.occurrenceId}`,
+    )
+  })
+
+  const editorLayer = editor === null ? null : createPortal(
+    <div
+      ref={editorRef}
+      className={css.commentEditor}
+      style={{ left: editor.left, top: editor.top }}
+      data-dsh-sessions-quote-comment-editor
+    >
+      <textarea
+        className={css.editorInput}
+        value={commentDraft}
+        rows={3}
+        autoFocus
+        placeholder={t('quote.commentPlaceholder')}
+        aria-label={t('quote.commentPlaceholder')}
+        onChange={event => {
+          setCommentDraft(event.currentTarget.value)
+          setSaveFailed(false)
+        }}
+        onKeyDown={event => {
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            event.stopPropagation()
+            closeEditor()
+          }
+        }}
+      />
+      {saveFailed ? <div className={css.editorError}>{t('quote.commentSaveFailed')}</div> : null}
+      <div className={css.editorActions}>
+        <button type="button" className={css.editorButton} onClick={closeEditor}>
+          {t('quote.commentCancel')}
+        </button>
+        <button
+          type="button"
+          className={clsx(css.editorButton, css.editorSave)}
+          onClick={saveComment}
+        >
+          {t('quote.commentSave')}
+        </button>
+      </div>
+    </div>,
+    document.body,
+  )
+
   const popover = popup === null ? null : createPortal(
     <div
       ref={popoverRef}
       className={css.popover}
-      data-dsh-sessions-quote-popover
       style={{
         left: popup.left,
         top: popup.top,
         transform: popup.above ? 'translate(-50%, -100%)' : 'translate(-50%, 0)',
       }}
     >
-      {popup.kind === 'offer'
-        ? (
-          <div
-            className={css.popoverCard}
-            onMouseDown={event => { event.preventDefault() }}
-          >
-            <input
-              ref={commentInputRef}
-              className={css.commentInput}
-              data-dsh-sessions-quote-comment
-              value={popup.comment}
-              placeholder={t('quote.commentPlaceholder')}
-              aria-label={t('quote.commentPlaceholder')}
-              onMouseDown={event => {
-                event.preventDefault()
-                event.currentTarget.focus()
-              }}
-              onChange={event => {
-                const comment = event.currentTarget.value
-                setPopup(current => current === null ? null : { ...current, comment })
-              }}
-              onKeyDown={event => {
-                if (event.key === 'Enter') {
-                  if (event.nativeEvent.isComposing) return
-                  event.preventDefault()
-                  addQuote()
-                } else if (event.key === 'Escape') {
-                  event.preventDefault()
-                  window.getSelection()?.removeAllRanges()
-                  setPopup(null)
-                }
-              }}
-            />
-            <button
-              type="button"
-              className={css.confirmButton}
-              aria-label={t('quote.confirm', { index: quotes.length + 1 })}
-              title={t('quote.confirm', { index: quotes.length + 1 })}
-              onClick={() => { addQuote() }}
-            >
-              {quotes.length + 1}
-            </button>
-          </div>
-        )
-        : (
-          <button
-            type="button"
-            className={clsx(css.popoverButton, popup.kind === 'failed' && css.popoverFailed)}
-            disabled
-            onMouseDown={event => { event.preventDefault() }}
-          >
-            <QuoteGlyph />
-            <span>{popup.kind === 'added' ? t('quote.added') : t('quote.failed')}</span>
-          </button>
-        )}
+      <button
+        type="button"
+        className={clsx(css.popoverButton, popup.kind === 'failed' && css.popoverFailed)}
+        disabled={popup.kind !== 'offer'}
+        onMouseDown={event => { event.preventDefault() }}
+        onClick={() => { addQuote() }}
+      >
+        <QuoteGlyph />
+        <span>
+          {popup.kind === 'added'
+            ? t('quote.added')
+            : popup.kind === 'failed'
+              ? t('quote.failed')
+              : t('quote.button')}
+        </span>
+      </button>
     </div>,
     document.body,
   )
@@ -369,6 +527,8 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
           </section>
         )
         : null}
+      {bubbleLayer}
+      {editorLayer}
       {popover}
     </>
   )

@@ -50,11 +50,37 @@ export function apply(ctx: ClientContext): void {
         if (actx === undefined) {
           throw new Error(`dsh-sessions: quote surface resolved no session scope for "${String(sessionId)}"`)
         }
+        const shell = ctx.conversation.input.for(actx)
         return {
           insertQuote: (reference, span) =>
             actx.bail(actx, 'slash/input-insert-reference', { reference, span }) === true,
           removeQuoteAt: (span) =>
             actx.bail(actx, 'slash/input-consume-token', { guard: { kind: 'span', span } }) === true,
+          updateQuote: (offset, next, previous) => {
+            const before = shell.state.getSnapshot()
+            if (before.phase !== 'plain' || offset < 0 || offset + 1 > before.draft.length) return false
+            const removed = actx.bail(actx, 'slash/input-consume-token', {
+              guard: {
+                kind: 'span',
+                span: { start: offset, end: offset + 1, draftRev: before.draftRev },
+              },
+            }) === true
+            if (!removed) return false
+            const after = shell.state.getSnapshot()
+            if (after.phase !== 'plain') return false
+            if (actx.bail(actx, 'slash/input-insert-reference', {
+              reference: next,
+              span: { start: offset, end: offset, draftRev: after.draftRev },
+            }) === true) return true
+            const restored = shell.state.getSnapshot()
+            if (restored.phase === 'plain') {
+              actx.bail(actx, 'slash/input-insert-reference', {
+                reference: previous,
+                span: { start: offset, end: offset, draftRev: restored.draftRev },
+              })
+            }
+            return false
+          },
         }
       },
     },

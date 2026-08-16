@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   decodeQuoteRef, encodeQuoteRef, formatQuoteBlock, formatQuoteWithComment,
   MAX_COMMENT_CHARS, MAX_QUOTE_CHARS, normalizeQuoteComment, normalizeQuoteText,
-  quoteComment, quoteFullText, quotePreview, type QuoteRefPayload,
+  quoteComment, quoteFullText, quotePreview, withQuoteComment, type QuoteRefPayload,
 } from '../src/client/quote.ts'
 
 const MARKER = '…（已截断）'
@@ -105,6 +105,25 @@ describe('quote refs', () => {
   it('rejects a payload whose comment is not a string', () => {
     const ref = encodeQuoteRef({ v: 1, id: 'x', text: 'x', truncated: false, comment: 42 } as unknown as QuoteRefPayload)
     expect(() => decodeQuoteRef(ref)).toThrow(/malformed quote ref/)
+  })
+})
+
+describe('withQuoteComment', () => {
+  const base: QuoteRefPayload = { v: 1, id: 'quote-8', text: '原文', truncated: false }
+
+  it('attaches a comment without mutating the original payload', () => {
+    const next = withQuoteComment(base, '解释一下')
+    expect(next).toEqual({ v: 1, id: 'quote-8', text: '原文', truncated: false, comment: '解释一下' })
+    expect(base.comment).toBeUndefined()
+    expect(Object.hasOwn(next, 'comment')).toBe(true)
+  })
+
+  it('drops the comment key when the comment is undefined or blank', () => {
+    for (const comment of [undefined, '', '   ']) {
+      const next = withQuoteComment(base, comment)
+      expect(next).toEqual({ v: 1, id: 'quote-8', text: '原文', truncated: false })
+      expect(Object.hasOwn(next, 'comment')).toBe(false)
+    }
   })
 })
 

@@ -150,6 +150,19 @@ export function formatQuoteSerialized(text: string, comment: string | undefined)
   return `\n${formatQuoteWithComment(text, comment)}\n`
 }
 
+/**
+ * Return a copy of `payload` with its optional comment replaced by
+ * `comment`. A missing or blank comment yields a copy without the `comment`
+ * key so the result satisfies `exactOptionalPropertyTypes`.
+ */
+export function withQuoteComment(payload: QuoteRefPayload, comment: string | undefined): QuoteRefPayload {
+  const trimmed = comment?.trim()
+  if (trimmed === undefined || trimmed === '') {
+    return { v: 1, id: payload.id, text: payload.text, truncated: payload.truncated }
+  }
+  return { v: 1, id: payload.id, text: payload.text, truncated: payload.truncated, comment: trimmed }
+}
+
 /** Generate a unique quote id for one quote chip. */
 export function createQuoteId(): string {
   return crypto.randomUUID()

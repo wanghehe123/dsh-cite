@@ -29,9 +29,13 @@ export const zh = {
   'quote.collapse': '收起引用',
   'quote.remove': '移除 {label}',
   'quote.truncated': '…（已截断）',
-  'quote.commentPlaceholder': '添加可选评论…',
+  'quote.commentPlaceholder': '添加评论…',
   'quote.commentLabel': '评论',
-  'quote.confirm': '添加为引用 {index}',
+  'quote.commentCancel': '取消',
+  'quote.commentSave': '保存',
+  'quote.commentSaveFailed': '保存失败，请重试',
+  'quote.bubble': '引用 {index}',
+  'quote.bubbleHasComment': '引用 {index}，已有评论',
 } satisfies Record<string, string>
 
 /** The session bridge namespace key union. */
@@ -64,9 +68,13 @@ export const en = {
   'quote.collapse': 'Collapse quote',
   'quote.remove': 'Remove {label}',
   'quote.truncated': '… (truncated)',
-  'quote.commentPlaceholder': 'Add optional comment…',
+  'quote.commentPlaceholder': 'Add comment…',
   'quote.commentLabel': 'Comment',
-  'quote.confirm': 'Add as quote {index}',
+  'quote.commentCancel': 'Cancel',
+  'quote.commentSave': 'Save',
+  'quote.commentSaveFailed': 'Could not save; try again',
+  'quote.bubble': 'Quote {index}',
+  'quote.bubbleHasComment': 'Quote {index}, commented',
 } satisfies Record<SessionKey, string>
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
