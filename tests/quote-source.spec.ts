@@ -34,7 +34,7 @@ describe('createQuoteSource', () => {
     if (source.codec === undefined) throw new Error('quote source must declare a codec')
     const payload: QuoteRefPayload = { v: 1, id: 'quote-4', text: 'copy me', truncated: true }
     const ref = encodeQuoteRef(payload)
-    expect(source.codec.clipboardText(ref)).toBe('> copy me')
+    expect(source.codec.clipboardText(ref)).toBe('\n> copy me\n')
     expect(decodeQuoteRef(ref).truncated).toBe(true)
   })
 
@@ -77,6 +77,26 @@ describe('createQuoteSource', () => {
     if (source.codec === undefined) throw new Error('quote source must declare a codec')
     const payload: QuoteRefPayload = { v: 1, id: 'quote-6', text: 'copy me', truncated: true, comment: '请精简' }
     const ref = encodeQuoteRef(payload)
-    expect(source.codec.clipboardText(ref)).toBe('> copy me\n\n请精简')
+    expect(source.codec.clipboardText(ref)).toBe('\n> copy me\n\n请精简\n')
+  })
+
+  it('keeps adjacent copied quotes and comments separated', () => {
+    const source = createQuoteSource()
+    if (source.codec === undefined) throw new Error('quote source must declare a codec')
+    const payloads: QuoteRefPayload[] = [
+      { v: 1, id: 'quote-9', text: '甲', truncated: false, comment: '说明甲' },
+      { v: 1, id: 'quote-10', text: '乙', truncated: false, comment: '说明乙' },
+    ]
+    const parts = payloads.map(payload => source.codec!.clipboardText(encodeQuoteRef(payload)))
+    const draft = '\uFFFC \uFFFC '
+    let text = ''
+    let cursor = 0
+    for (const part of parts) {
+      const offset = draft.indexOf('\uFFFC', cursor)
+      text += draft.slice(cursor, offset) + part
+      cursor = offset + 1
+    }
+    text += draft.slice(cursor)
+    expect(text).toBe('\n> 甲\n\n说明甲\n \n> 乙\n\n说明乙\n ')
   })
 })

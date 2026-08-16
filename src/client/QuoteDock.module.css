@@ -175,6 +175,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  max-width: calc(100vw - 24px);
   padding: 4px;
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: 999px;
@@ -188,7 +189,8 @@
 
 .commentInput {
   flex: 1;
-  min-width: 176px;
+  min-width: 0;
+  width: clamp(120px, 40vw, 240px);
   padding: 5px 10px;
   border: 0;
   background: transparent;

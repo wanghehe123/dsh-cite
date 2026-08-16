@@ -15,7 +15,7 @@ import type { ReferenceInsert, TokenSpan } from '@deepseek-ai/dsh-client-ui-inpu
 import type { NS } from './locales.ts'
 import { QUOTE_SOURCE_NAME } from './quote-source.ts'
 import {
-  createQuoteId, encodeQuoteRef, formatQuoteWithComment, normalizeQuoteComment,
+  createQuoteId, encodeQuoteRef, formatQuoteSerialized, normalizeQuoteComment,
   normalizeQuoteText, quoteComment, quoteFullText, quotePreview, type QuoteRefPayload,
 } from './quote.ts'
 import css from './QuoteDock.module.css'
@@ -62,7 +62,9 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set())
   const inputRef = useRef(input)
   const dismissTimerRef = useRef<number | undefined>(undefined)
+  const failedTimerRef = useRef<number | undefined>(undefined)
   const popoverRef = useRef<HTMLDivElement | null>(null)
+  const commentInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => { inputRef.current = input }, [input])
 
@@ -78,8 +80,11 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
     setPopup(current => current === null || current.kind === 'added' ? current : null)
   }, [])
 
-  const updatePopup = useCallback(() => {
-    if (popoverRef.current?.contains(document.activeElement)) {
+  const updatePopup = useCallback((event?: Event) => {
+    if (
+      event?.type === 'selectionchange'
+      && popoverRef.current?.contains(document.activeElement)
+    ) {
       if (inputRef.current.phase !== 'plain') hideOffer()
       return
     }
@@ -137,17 +142,29 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
       document.removeEventListener('scroll', updatePopup, true)
       window.removeEventListener('resize', updatePopup)
       window.clearTimeout(dismissTimerRef.current)
+      window.clearTimeout(failedTimerRef.current)
     }
   }, [updatePopup])
+
+  useEffect(() => {
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Node && popoverRef.current?.contains(target)) return
+      hideOffer()
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointer, true)
+    return () => { document.removeEventListener('pointerdown', closeOnOutsidePointer, true) }
+  }, [hideOffer])
 
   const showTransient = useCallback((kind: 'added' | 'failed') => {
     setPopup(current => current === null ? null : { ...current, kind })
     window.clearTimeout(dismissTimerRef.current)
+    window.clearTimeout(failedTimerRef.current)
     if (kind === 'added') {
       scheduleDismiss()
       return
     }
-    dismissTimerRef.current = window.setTimeout(() => {
+    failedTimerRef.current = window.setTimeout(() => {
       setPopup(current => current === null || current.kind !== 'failed' ? current : { ...current, kind: 'offer' })
     }, 1400)
   }, [scheduleDismiss])
@@ -189,7 +206,7 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
       source: QUOTE_SOURCE_NAME,
       ref: encodeQuoteRef(payload),
       label: t('quote.chip', { index }),
-      clipboardText: formatQuoteWithComment(normalized.text, comment),
+      clipboardText: formatQuoteSerialized(normalized.text, comment),
     }
     const span: TokenSpan = {
       start: snapshot.draft.length,
@@ -244,7 +261,9 @@ export function QuoteDock({ input, insertQuote, removeQuoteAt, t }: QuoteDockPro
             onMouseDown={event => { event.preventDefault() }}
           >
             <input
+              ref={commentInputRef}
               className={css.commentInput}
+              data-dsh-sessions-quote-comment
               value={popup.comment}
               placeholder={t('quote.commentPlaceholder')}
               aria-label={t('quote.commentPlaceholder')}
