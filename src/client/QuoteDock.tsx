@@ -155,8 +155,16 @@ export function QuoteDock({
     const next = new Map<number, BubbleRect>()
     for (const [occurrenceId, range] of anchorsRef.current) {
       try {
-        const first = range.getClientRects().item(0) ?? range.getBoundingClientRect()
-        if (first.width === 0 && first.height === 0) continue
+        const rects = range.getClientRects()
+        let first: DOMRect | null = null
+        for (let index = 0; index < rects.length; index += 1) {
+          const candidate = rects.item(index)
+          if (candidate !== null && (candidate.width > 0 || candidate.height > 0)) {
+            first = candidate
+            break
+          }
+        }
+        if (first === null) continue
         next.set(occurrenceId, { left: first.left + first.width / 2, top: first.top })
       } catch {
         // The conversation re-rendered and detached this range; drop the bubble.
@@ -387,7 +395,10 @@ export function QuoteDock({
         style={{ left: bubble.left, top: bubble.top - 32 }}
         aria-label={t(hasComment ? 'quote.bubbleHasComment' : 'quote.bubble', { index })}
         title={t(hasComment ? 'quote.bubbleHasComment' : 'quote.bubble', { index })}
-        onClick={() => { openEditor(quote.occurrenceId) }}
+        onClick={() => {
+          if (editor?.occurrenceId === quote.occurrenceId) closeEditor()
+          else openEditor(quote.occurrenceId)
+        }}
       >
         <QuoteGlyph />
         <span>{index}</span>
