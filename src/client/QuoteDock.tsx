@@ -21,6 +21,13 @@ import {
 } from './quote.ts'
 import css from './QuoteDock.module.css'
 
+/** Result of replacing one quote chip in place. */
+export interface QuoteUpdateResult {
+  saved: boolean
+  /** New occurrenceId minted by the fallback re-insert of the previous ref. */
+  restoredOccurrenceId?: number
+}
+
 /** Injected face bound by the registration to the session-scoped ctx. */
 export interface QuoteDockInjected {
   insertQuote(reference: ReferenceInsert, span: TokenSpan): boolean
@@ -30,7 +37,7 @@ export interface QuoteDockInjected {
    * insert `next` at the same draft offset with a fresh draftRev. Falls back
    * to re-inserting `previous` when the next insert is rejected.
    */
-  updateQuote(offset: number, next: ReferenceInsert, previous: ReferenceInsert): boolean
+  updateQuote(offset: number, next: ReferenceInsert, previous: ReferenceInsert): QuoteUpdateResult
 }
 
 /** Full props: the input.dock owner share, the locale seat, and the bail face. */
@@ -96,6 +103,7 @@ export function QuoteDock({
   const editorRef = useRef<HTMLDivElement | null>(null)
   const anchorsRef = useRef<ReadonlyMap<number, Range>>(new Map())
   const pendingAnchorRef = useRef<Range | null>(null)
+  const editorIdRef = useRef<number | null>(null)
 
   useEffect(() => { inputRef.current = input }, [input])
 
@@ -150,6 +158,11 @@ export function QuoteDock({
     setPopup({ left, top, above, text, kind: 'offer' })
   }, [hideOffer])
 
+  const clampEditorPosition = useCallback((left: number, top: number) => ({
+    left: Math.min(Math.max(left, 12), Math.max(12, window.innerWidth - 276)),
+    top: Math.min(Math.max(top, 8), Math.max(8, window.innerHeight - 200)),
+  }), [])
+
   /** Recompute every anchored bubble from its live DOM Range. */
   const updateBubbleRects = useCallback(() => {
     const next = new Map<number, BubbleRect>()
@@ -171,7 +184,16 @@ export function QuoteDock({
       }
     }
     setBubbleRects(next)
-  }, [])
+    const activeId = editorIdRef.current
+    if (activeId !== null) {
+      const activeBubble = next.get(activeId)
+      if (activeBubble !== undefined) {
+        setEditor(current => current === null
+          ? null
+          : { ...current, ...clampEditorPosition(activeBubble.left - 132, activeBubble.top + 32) })
+      }
+    }
+  }, [clampEditorPosition])
 
   useEffect(() => {
     const onScroll = () => {
@@ -215,23 +237,12 @@ export function QuoteDock({
         changed = true
       }
     }
-    setEditor(current => current === null || ids.has(current.occurrenceId) ? current : null)
+    if (editorIdRef.current !== null && !ids.has(editorIdRef.current)) {
+      editorIdRef.current = null
+      setEditor(null)
+    }
     if (changed) updateBubbleRects()
   }, [quotes, updateBubbleRects])
-
-  useEffect(() => {
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      const target = event.target
-      if (target instanceof Node && popoverRef.current?.contains(target)) return
-      hideOffer()
-      if (editor === null) return
-      if (target instanceof Node && editorRef.current?.contains(target)) return
-      setEditor(null)
-      setSaveFailed(false)
-    }
-    document.addEventListener('pointerdown', closeOnOutsidePointer, true)
-    return () => { document.removeEventListener('pointerdown', closeOnOutsidePointer, true) }
-  }, [hideOffer, editor])
 
   const showTransient = useCallback((kind: 'added' | 'failed') => {
     setPopup(current => current === null ? null : { ...current, kind })
@@ -294,6 +305,7 @@ export function QuoteDock({
   }, [popup, insertQuote, showTransient, hideOffer, focusComposerAtEnd, t])
 
   const closeEditor = useCallback(() => {
+    editorIdRef.current = null
     setEditor(null)
     setSaveFailed(false)
   }, [])
@@ -301,23 +313,29 @@ export function QuoteDock({
   const openEditor = useCallback((occurrenceId: number) => {
     const occurrence = quotes.find(quote => quote.occurrenceId === occurrenceId)
     if (occurrence === undefined) return
+    editorIdRef.current = occurrenceId
     setCommentDraft(quoteComment(occurrence.ref) ?? '')
     setSaveFailed(false)
     const bubble = bubbleRects.get(occurrenceId)
     if (bubble === undefined) {
-      setEditor({
-        occurrenceId,
-        left: Math.max(12, window.innerWidth / 2 - 132),
-        top: Math.max(64, window.innerHeight / 3),
-      })
+      setEditor({ occurrenceId, ...clampEditorPosition(window.innerWidth / 2 - 132, window.innerHeight / 3) })
       return
     }
-    setEditor({
-      occurrenceId,
-      left: Math.min(Math.max(bubble.left - 132, 12), Math.max(12, window.innerWidth - 276)),
-      top: bubble.top + 32,
-    })
-  }, [quotes, bubbleRects])
+    setEditor({ occurrenceId, ...clampEditorPosition(bubble.left - 132, bubble.top + 32) })
+  }, [quotes, bubbleRects, clampEditorPosition])
+
+  useEffect(() => {
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Element && target.closest('[data-dsh-sessions-quote-bubble]') !== null) return
+      const insidePopover = target instanceof Node && popoverRef.current?.contains(target)
+      const insideEditor = target instanceof Node && editorRef.current?.contains(target)
+      if (!insidePopover) hideOffer()
+      if (!insideEditor) closeEditor()
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePointer, true)
+    return () => { document.removeEventListener('pointerdown', closeOnOutsidePointer, true) }
+  }, [hideOffer, closeEditor])
 
   const saveComment = useCallback(() => {
     if (editor === null) return
@@ -354,8 +372,15 @@ export function QuoteDock({
     }
     const anchor = anchorsRef.current.get(occurrence.occurrenceId)
     pendingAnchorRef.current = anchor === undefined ? null : anchor.cloneRange()
-    if (!updateQuote(occurrence.offset, next, previous)) {
-      pendingAnchorRef.current = null
+    const result = updateQuote(occurrence.offset, next, previous)
+    if (!result.saved) {
+      if (result.restoredOccurrenceId === undefined) {
+        pendingAnchorRef.current = null
+      } else {
+        const restoredId = result.restoredOccurrenceId
+        editorIdRef.current = restoredId
+        setEditor(current => current === null ? null : { ...current, occurrenceId: restoredId })
+      }
       setSaveFailed(true)
       return
     }
@@ -386,22 +411,22 @@ export function QuoteDock({
   const bubbleLayer = quotes.map(quote => {
     const bubble = bubbleRects.get(quote.occurrenceId)
     if (bubble === undefined) return null
-    const index = quotes.findIndex(item => item.occurrenceId === quote.occurrenceId) + 1
     const hasComment = quoteComment(quote.ref) !== null
     return createPortal(
       <button
         type="button"
         className={clsx(css.anchorBubble, hasComment && css.anchorBubbleCommented)}
         style={{ left: bubble.left, top: bubble.top - 32 }}
-        aria-label={t(hasComment ? 'quote.bubbleHasComment' : 'quote.bubble', { index })}
-        title={t(hasComment ? 'quote.bubbleHasComment' : 'quote.bubble', { index })}
+        data-dsh-sessions-quote-bubble
+        aria-label={hasComment ? t('quote.bubbleHasComment', { label: quote.label }) : quote.label}
+        title={hasComment ? t('quote.bubbleHasComment', { label: quote.label }) : quote.label}
         onClick={() => {
-          if (editor?.occurrenceId === quote.occurrenceId) closeEditor()
+          if (editorIdRef.current === quote.occurrenceId) closeEditor()
           else openEditor(quote.occurrenceId)
         }}
       >
         <QuoteGlyph />
-        <span>{index}</span>
+        <span>{quote.label}</span>
         {hasComment ? <span className={css.anchorBubbleDot} aria-hidden="true" /> : null}
       </button>,
       document.body,

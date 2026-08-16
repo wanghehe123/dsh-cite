@@ -58,20 +58,25 @@ export function apply(ctx: ClientContext): void {
             actx.bail(actx, 'slash/input-consume-token', { guard: { kind: 'span', span } }) === true,
           updateQuote: (offset, next, previous) => {
             const before = shell.state.getSnapshot()
-            if (before.phase !== 'plain' || offset < 0 || offset + 1 > before.draft.length) return false
+            if (
+              before.phase !== 'plain'
+              || offset < 0
+              || offset + 1 > before.draft.length
+              || before.draft[offset] !== '\uFFFC'
+            ) return { saved: false }
             const removed = actx.bail(actx, 'slash/input-consume-token', {
               guard: {
                 kind: 'span',
                 span: { start: offset, end: offset + 1, draftRev: before.draftRev },
               },
             }) === true
-            if (!removed) return false
+            if (!removed) return { saved: false }
             const after = shell.state.getSnapshot()
-            if (after.phase !== 'plain') return false
+            if (after.phase !== 'plain') return { saved: false }
             if (actx.bail(actx, 'slash/input-insert-reference', {
               reference: next,
               span: { start: offset, end: offset, draftRev: after.draftRev },
-            }) === true) return true
+            }) === true) return { saved: true }
             const restored = shell.state.getSnapshot()
             if (restored.phase === 'plain') {
               actx.bail(actx, 'slash/input-insert-reference', {
@@ -79,7 +84,12 @@ export function apply(ctx: ClientContext): void {
                 span: { start: offset, end: offset, draftRev: restored.draftRev },
               })
             }
-            return false
+            const finalSnapshot = shell.state.getSnapshot()
+            const restoredOccurrence = finalSnapshot.occurrences
+              .find(occurrence => occurrence.ref === previous.ref)
+            return restoredOccurrence === undefined
+              ? { saved: false }
+              : { saved: false, restoredOccurrenceId: restoredOccurrence.occurrenceId }
           },
         }
       },
