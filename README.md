@@ -89,7 +89,7 @@ api-proxy 的 settings 命名空间白名单不覆盖第三方包，因此卡片
 - **插入位置**：统一追加到草稿末尾，插入后自动聚焦输入框并把光标放到末尾。
 - **数据来源**：引用条不维护第二份状态，完全从官方输入机的 `input.occurrences` 过滤 `source === 'dsh-sessions-quote'` 派生。因此撤销、重做、复制、粘贴、手动删除 chip 都与引用条天然同步。
 - **官方管线**：插入走 `slash/input-insert-reference`，移除走 `slash/input-consume-token`（span CAS），由 `InputMachine` 负责占位符、偏移维护与撤销历史。
-- **序列化**：codec 的 `serialize(ref)` 返回逐行 `> ` 前缀引用块，有评论时追加一个空行和评论，并带换行分隔防止相邻 chip 粘连；`clipboardText` 输出干净的单条引用块。复制 chip 或草稿持久化后重载，引用以引用块文本形式保留。
+- **序列化**：codec 的 `serialize(ref)` 返回逐行 `> ` 前缀引用块，有评论时追加一个空行和评论，并带换行分隔防止相邻 chip 粘连；`clipboardText` 同样带首尾换行，复制相邻 chip 也不会粘成一行。复制 chip 或草稿持久化后重载，引用以引用块文本形式保留。
 - **`@` 菜单无干扰**：`dsh-sessions-quote` 是一个候选恒为空的 `@` 触发源，空分组不会渲染，因此不会污染已有的 `@` 会话候选菜单。
 
 #### 模型看到的内容
