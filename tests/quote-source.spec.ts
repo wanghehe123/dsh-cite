@@ -43,4 +43,20 @@ describe('createQuoteSource', () => {
     if (source.codec === undefined) throw new Error('quote source must declare a codec')
     await expect(source.codec.serialize('%%%')).rejects.toThrow(/malformed quote ref/)
   })
+
+  it('serializes an optional comment after the blockquote', async () => {
+    const source = createQuoteSource()
+    if (source.codec === undefined) throw new Error('quote source must declare a codec')
+    const payload: QuoteRefPayload = { v: 1, id: 'quote-5', text: '第一行\n\n第二行', truncated: false, comment: '解释一下' }
+    await expect(source.codec.serialize(encodeQuoteRef(payload))).resolves
+      .toBe('> 第一行\n>\n> 第二行\n\n解释一下')
+  })
+
+  it('projects the same quoted comment through clipboardText', () => {
+    const source = createQuoteSource()
+    if (source.codec === undefined) throw new Error('quote source must declare a codec')
+    const payload: QuoteRefPayload = { v: 1, id: 'quote-6', text: 'copy me', truncated: true, comment: '请精简' }
+    const ref = encodeQuoteRef(payload)
+    expect(source.codec.clipboardText(ref)).toBe('> copy me\n\n请精简')
+  })
 })

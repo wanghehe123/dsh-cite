@@ -5,7 +5,7 @@
  * occurrence with this source name through `codec.serialize`.
  */
 import type { InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
-import { decodeQuoteRef, formatQuoteBlock } from './quote.ts'
+import { decodeQuoteRef, formatQuoteWithComment } from './quote.ts'
 
 /** Source name stamped on ReferenceInsert and used by the quote bar filter. */
 export const QUOTE_SOURCE_NAME = 'dsh-sessions-quote'
@@ -27,10 +27,12 @@ export function createQuoteSource(): InputTriggerSource {
 
     codec: {
       clipboardText(ref) {
-        return formatQuoteBlock(decodeQuoteRef(ref).text)
+        const payload = decodeQuoteRef(ref)
+        return formatQuoteWithComment(payload.text, payload.comment)
       },
       async serialize(ref) {
-        return formatQuoteBlock(decodeQuoteRef(ref).text)
+        const payload = decodeQuoteRef(ref)
+        return formatQuoteWithComment(payload.text, payload.comment)
       },
     },
   }
