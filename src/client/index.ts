@@ -18,7 +18,7 @@ import { createSessionMentionSource } from './session-mention-source.ts'
 import { registerWorkspaceSurface } from '../vendor/workspace/index.ts'
 
 /** Required client services: locale, session/workspace feeds, triggers, slots. */
-export const inject = ['sessions', 'workspaces', 'locale', 'inputTriggers', 'slots']
+export const inject = ['sessions', 'workspaces', 'locale', 'inputTriggers', 'slots', 'conversation']
 
 /**
  * Register the vendored workspace surface, session mention source, quote
