@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
-  decodeQuoteRef, encodeQuoteRef, formatQuoteBlock, formatQuoteWithComment,
-  MAX_COMMENT_CHARS, MAX_QUOTE_CHARS, normalizeQuoteComment, normalizeQuoteText,
-  quoteComment, quoteFullText, quotePreview, withQuoteComment, type QuoteRefPayload,
+  ANCHOR_BUBBLE_GAP, ANCHOR_BUBBLE_PAD, ANCHOR_BUBBLE_SIZE,
+  bubbleAnchorFromRect, commentEditorPosition, decodeQuoteRef, encodeQuoteRef,
+  formatQuoteBlock, formatQuoteWithComment, MAX_COMMENT_CHARS, MAX_QUOTE_CHARS,
+  normalizeQuoteComment, normalizeQuoteText, pickFirstClientRect, quoteComment,
+  quoteFullText, quotePreview, withQuoteComment, type QuoteRefPayload,
 } from '../src/client/quote.ts'
 
 const MARKER = '…（已截断）'
@@ -144,5 +146,65 @@ describe('quote display helpers', () => {
     const payload: QuoteRefPayload = { v: 1, id: 'quote-7', text: '原文', truncated: false, comment: '重点看这里' }
     expect(quoteComment(encodeQuoteRef(payload))).toBe('重点看这里')
     expect(quoteComment('%%%')).toBeNull()
+  })
+})
+
+describe('pickFirstClientRect', () => {
+  it('returns the first non-empty rect and skips collapsed fragments', () => {
+    expect(pickFirstClientRect([
+      { left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 },
+      { left: 10, right: 110, top: 20, bottom: 36, width: 100, height: 16 },
+    ])).toEqual({ left: 10, right: 110, top: 20, bottom: 36, width: 100, height: 16 })
+  })
+
+  it('returns null when every rect is empty', () => {
+    expect(pickFirstClientRect([])).toBeNull()
+    expect(pickFirstClientRect([
+      { left: 0, right: 0, top: 0, bottom: 0, width: 0, height: 0 },
+    ])).toBeNull()
+  })
+})
+
+describe('bubbleAnchorFromRect', () => {
+  const viewport = { width: 800, height: 600 }
+
+  it('pins the badge to the end of the first line, vertically centered', () => {
+    expect(bubbleAnchorFromRect(
+      { left: 40, right: 240, top: 80, bottom: 100, width: 200, height: 20 },
+      viewport,
+    )).toEqual({
+      left: 240 + ANCHOR_BUBBLE_GAP,
+      top: 90,
+    })
+  })
+
+  it('clamps the badge inside the viewport when the line ends near the right edge', () => {
+    expect(bubbleAnchorFromRect(
+      { left: 700, right: 790, top: 80, bottom: 100, width: 90, height: 20 },
+      viewport,
+    )).toEqual({
+      left: viewport.width - ANCHOR_BUBBLE_SIZE - ANCHOR_BUBBLE_PAD,
+      top: 90,
+    })
+  })
+
+  it('hides the badge when the line is scrolled out of the viewport', () => {
+    expect(bubbleAnchorFromRect(
+      { left: 40, right: 240, top: -40, bottom: -10, width: 200, height: 30 },
+      viewport,
+    )).toBeNull()
+    expect(bubbleAnchorFromRect(
+      { left: 40, right: 240, top: 620, bottom: 640, width: 200, height: 20 },
+      viewport,
+    )).toBeNull()
+  })
+})
+
+describe('commentEditorPosition', () => {
+  it('places the editor just below the badge and clamps to the viewport', () => {
+    expect(commentEditorPosition({ left: 244, top: 90 }, { width: 800, height: 600 }))
+      .toEqual({ left: 236, top: 104 })
+    expect(commentEditorPosition({ left: 780, top: 590 }, { width: 800, height: 600 }))
+      .toEqual({ left: 800 - 264 - 12, top: 600 - 160 })
   })
 })

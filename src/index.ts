@@ -1,8 +1,9 @@
 /**
- * dsh-sessions: cross-session @ mentions for the DeepSeek Harness Web UI.
- * The host half mounts `/dsh-sessions` JSON routes, the `agent/pre-step`
- * mention adapter, and a settings namespace persisted through the harness
- * settings seam (edited by the browser card via the plugin's own routes).
+ * dsh-cite: point the current turn at past sessions, earlier messages,
+ * and files this turn just wrote. The host half mounts `/dsh-sessions`
+ * JSON routes, the `agent/pre-step` mention adapter, and a settings
+ * namespace persisted through the harness settings seam (edited by the
+ * browser card via the plugin's own routes).
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent'

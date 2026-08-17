@@ -17,9 +17,9 @@
 
 | 决策点 | 结论 |
 |---|---|
-| 选区浮层 | 恢复为单个「添加到对话」按钮；点击后短暂显示「已添加」 |
-| 气泡位置 | 锚定选中句子的第一行上方（Range 锚点 + `getClientRects()[0]`），随滚动/窗口缩放重算 |
-| 气泡内容 | 显示该引用的「引用 N」标签（与 composer chip、引用条一致）；有评论时追加小圆点标记 |
+| 选区浮层 | 恢复为单个「添加到对话」按钮；添加成功后浮层直接关闭，不再显示「已添加」 |
+| 气泡位置 | 锚定选中句子第一行末尾（Range 锚点 + 第一个非空 `clientRect` 的 `right`，垂直居中），随滚动/窗口缩放重算；滚出视口时隐藏 |
+| 气泡内容 | 只显示序号数字的小号圆点（1、2、3…）；有评论时追加小圆点标记 |
 | 评论编辑 | 点气泡弹出卡片：textarea 预填已有评论；「取消 / 保存」按钮 |
 | 保存语义 | 评论写回 chip 的 ref（v1 可选 `comment`）；再次点气泡可修改或清空评论 |
 | 保存实现 | 官方输入机 `slash/input-consume-token` 移除旧 chip + `slash/input-insert-reference` 同位插入新 chip；两个调用之间用 `ctx.conversation.input.for(actx).state.getSnapshot()` 读最新 draftRev |
@@ -54,8 +54,8 @@ InputMachine 插入 U+FFFC chip（官方撤销/复制/粘贴/偏移维护）
    │              → consume 旧 chip + insert 新 chip（同位、同 label）
    │              → 新 occurrenceId 承接旧 Range 锚点
    │
-   ├─► conversation.input.dock 引用条：
-   │     展开显示原文 + 「评论」小节；移除引用时气泡同步消失
+   ├─► conversation.input.dock「N 条注释」胶囊（默认收起）：
+   │     展开后列出序号 + 预览，再展开显示原文 + 「评论」小节；移除引用时圆点同步消失
    │
    └─► 提交时 codec.serialize(ref)
           → formatQuoteSerialized(text, comment)
@@ -78,8 +78,8 @@ InputMachine 插入 U+FFFC chip（官方撤销/复制/粘贴/偏移维护）
   - `anchorsRef: Map<occurrenceId, Range>`、`pendingAnchorRef`、`editorIdRef`。渲染由 `bubbleRects` state 驱动，不需要额外版本号。
   - `addQuote` 插入前 `pendingAnchorRef.current = selection.getRangeAt(0).cloneRange()`；插入失败清空。
   - effect 对 `quotes` 做对账：删除失效锚点；pending 存在且出现新 occurrenceId 时挂接并清 pending；随后调用 `updateBubbleRects()`；正在编辑的引用消失时关闭编辑卡片。
-- `updateBubbleRects()`：遍历 anchorsRef，`range.getClientRects()[0]` 取第一行矩形，得到气泡中心 `left/top`，写入 `bubbleRects` state；scroll（capture）与 resize 时调用。
-- 气泡渲染：body portal，样式 `anchorBubble`；显示序号；`quoteComment(ref) !== null` 时加 `anchorBubbleDot` 标记；点击打开编辑卡片。
+- `updateBubbleRects()`：遍历 anchorsRef，`pickFirstClientRect` + `bubbleAnchorFromRect` 把数字圆点钉在第一行末尾（垂直居中），滚出视口则隐藏；scroll（capture）与 resize 时调用。
+- 气泡渲染：body portal，样式 `anchorBubble`（20px 实心圆点，只显示序号）；`quoteComment(ref) !== null` 时加 `anchorBubbleDot` 标记；点击打开编辑卡片。
 - 评论卡片：body portal，`commentEditor` 卡片 + textarea（`quote.commentPlaceholder`）+ 取消/保存；Escape 或点击卡片外关闭；打开时预填 `quoteComment(ref) ?? ''`。
 - 保存：解码旧 payload → `normalizeQuoteComment` → 内容与现状一致则直接关闭；否则 `withQuoteComment` 构造新 payload，设 `pendingAnchorRef = 旧 Range.cloneRange()`，调用注入的 `updateQuote(offset, 新 ReferenceInsert)`。成功关闭卡片；失败时若返回 `restoredOccurrenceId` 则把编辑卡片与锚点迁移到回滚后的新 id 并显示「保存失败，请重试」，否则清空 pending。
 - 引用条展开区继续显示原文 + 「评论」小节。
@@ -100,7 +100,7 @@ en 对应：`Add comment…` / `Cancel` / `Save` / `Could not save; try again` /
 ### 5. `src/client/QuoteDock.module.css`
 
 - 删除不再使用的 `.popoverCard / .commentInput / .confirmButton`。
-- 新增 `.anchorBubble`（圆角气泡 + 小尾巴）、`.anchorBubbleDot`（已有评论标记）、`.commentEditor`、`.editorInput`、`.editorActions`、`.editorButton`、`.editorSave`、`.editorError`。
+- 新增 `.anchorBubble`（20px 序号圆点，无尾巴）、`.anchorBubbleDot`（已有评论标记）、`.countChip`（「N 条注释」胶囊）、`.commentEditor`、`.editorInput`、`.editorActions`、`.editorButton`、`.editorSave`、`.editorError`。
 - 全部使用 `--dsw-*` 语义 token。
 
 ## 测试
@@ -115,7 +115,7 @@ en 对应：`Add comment…` / `Cancel` / `Save` / `Could not save; try again` /
 ## 验收清单
 
 - [ ] 选中正文只出现「添加到对话」按钮。
-- [ ] 添加后引用 chip 进入草稿，且选中句子上方出现带序号的气泡。
+- [ ] 添加后引用 chip 进入草稿，且选中句子第一行末尾出现小号数字圆点。
 - [ ] 连续添加多条：气泡编号 1/2/3，对应引用条顺序。
 - [ ] 点击气泡弹出评论卡片，预填已有评论；取消/Esc/点外部不改变数据。
 - [ ] 保存后引用条出现「评论」，气泡加圆点；发送时模型看到 `> 原文\n\n评论`。

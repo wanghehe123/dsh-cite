@@ -194,3 +194,91 @@ export function quoteComment(ref: string): string | null {
     return null
   }
 }
+
+/** Diameter of the Codex-style numbered badge, in CSS pixels. */
+export const ANCHOR_BUBBLE_SIZE = 20
+
+/** Gap between the end of the first line and the badge. */
+export const ANCHOR_BUBBLE_GAP = 4
+
+/** Minimum inset from the viewport edges. */
+export const ANCHOR_BUBBLE_PAD = 8
+
+/** Viewport-relative rectangle used to pin a quote badge. */
+export interface ClientRectLike {
+  left: number
+  right: number
+  top: number
+  bottom: number
+  width: number
+  height: number
+}
+
+/** Visible viewport used to clamp or hide a floating badge. */
+export interface ViewportBox {
+  width: number
+  height: number
+}
+
+/** Viewport position of one numbered badge's center-left anchor. */
+export interface BubbleAnchor {
+  left: number
+  top: number
+}
+
+/** Width of the comment editor card; matches `.commentEditor`. */
+const COMMENT_EDITOR_WIDTH = 264
+
+/** Conservative editor height used only for viewport clamping. */
+const COMMENT_EDITOR_HEIGHT = 160
+
+/**
+ * First non-empty client rect — the first visible line of a selection.
+ * Collapsed fragments (0×0) are skipped so a wrap boundary does not
+ * steal the anchor.
+ */
+export function pickFirstClientRect(
+  rects: ArrayLike<ClientRectLike | null | undefined>,
+): ClientRectLike | null {
+  for (let index = 0; index < rects.length; index += 1) {
+    const rect = rects[index]
+    if (rect !== null && rect !== undefined && (rect.width > 0 || rect.height > 0)) {
+      return rect
+    }
+  }
+  return null
+}
+
+/**
+ * Codex-style badge position: the end of the first line, vertically
+ * centered on that line. Returns null when the line is off-screen so
+ * the badge does not float over unrelated chrome.
+ */
+export function bubbleAnchorFromRect(
+  rect: ClientRectLike,
+  viewport: ViewportBox,
+): BubbleAnchor | null {
+  if (rect.bottom < 0 || rect.top > viewport.height) return null
+  const unclamped = rect.right + ANCHOR_BUBBLE_GAP
+  const maxLeft = Math.max(ANCHOR_BUBBLE_PAD, viewport.width - ANCHOR_BUBBLE_SIZE - ANCHOR_BUBBLE_PAD)
+  return {
+    left: Math.min(Math.max(unclamped, ANCHOR_BUBBLE_PAD), maxLeft),
+    top: rect.top + rect.height / 2,
+  }
+}
+
+/**
+ * Place the comment editor just below the badge and clamp it so the
+ * card stays inside the viewport.
+ */
+export function commentEditorPosition(
+  bubble: BubbleAnchor,
+  viewport: ViewportBox,
+): { left: number, top: number } {
+  const maxLeft = Math.max(12, viewport.width - COMMENT_EDITOR_WIDTH - 12)
+  const maxTop = Math.max(8, viewport.height - COMMENT_EDITOR_HEIGHT)
+  return {
+    left: Math.min(Math.max(bubble.left - 8, 12), maxLeft),
+    top: Math.min(Math.max(bubble.top + 14, 8), maxTop),
+  }
+}

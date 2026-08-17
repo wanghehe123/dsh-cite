@@ -1,23 +1,25 @@
 /**
  * Quote capture surface registered into `conversation.input.dock`: a
- * document-level selection popover, per-quote anchor bubbles above the
- * selected sentence, a comment editor launched from each bubble, and the
- * quote bar above the composer. Quote state is derived entirely from
- * InputState.occurrences — the same chips the input machine already tracks.
+ * document-level selection popover, numbered badges at the end of each
+ * quoted first line, a comment editor launched from each badge, and a
+ * compact comment-count chip above the composer. Quote state is derived
+ * entirely from InputState.occurrences — the same chips the input machine
+ * already tracks.
  */
 import clsx from 'clsx'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { IconChevronDownOutline14, IconCloseOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutline14, IconCloseOutline16, IconQueueOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ReferenceInsert, TokenSpan } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import type { NS } from './locales.ts'
 import { QUOTE_SOURCE_NAME } from './quote-source.ts'
 import {
-  createQuoteId, decodeQuoteRef, encodeQuoteRef, formatQuoteSerialized,
-  normalizeQuoteComment, normalizeQuoteText, quoteComment, quoteFullText,
-  quotePreview, withQuoteComment, type QuoteRefPayload,
+  bubbleAnchorFromRect, commentEditorPosition, createQuoteId, decodeQuoteRef,
+  encodeQuoteRef, formatQuoteSerialized, normalizeQuoteComment, normalizeQuoteText,
+  pickFirstClientRect, quoteComment, quoteFullText, quotePreview, withQuoteComment,
+  type BubbleAnchor, type QuoteRefPayload,
 } from './quote.ts'
 import css from './QuoteDock.module.css'
 
@@ -50,13 +52,7 @@ interface QuotePopup {
   top: number
   above: boolean
   text: string
-  kind: 'offer' | 'added' | 'failed'
-}
-
-/** Viewport position of one quote anchor bubble. */
-interface BubbleRect {
-  left: number
-  top: number
+  kind: 'offer' | 'failed'
 }
 
 /** Open comment editor anchored below one quote bubble. */
@@ -93,7 +89,8 @@ export function QuoteDock({
 }: QuoteDockProps): ReactElement {
   const [popup, setPopup] = useState<QuotePopup | null>(null)
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set())
-  const [bubbleRects, setBubbleRects] = useState<ReadonlyMap<number, BubbleRect>>(() => new Map())
+  const [barOpen, setBarOpen] = useState(false)
+  const [bubbleRects, setBubbleRects] = useState<ReadonlyMap<number, BubbleAnchor>>(() => new Map())
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [commentDraft, setCommentDraft] = useState('')
   const [saveFailed, setSaveFailed] = useState(false)
@@ -110,13 +107,17 @@ export function QuoteDock({
   const quotes = useMemo(() => input.occurrences
     .filter(occurrence => occurrence.source === QUOTE_SOURCE_NAME), [input.occurrences])
 
+  useEffect(() => {
+    if (quotes.length === 0) setBarOpen(false)
+  }, [quotes.length])
+
   const scheduleDismiss = useCallback(() => {
     window.clearTimeout(dismissTimerRef.current)
     dismissTimerRef.current = window.setTimeout(() => { setPopup(null) }, 1400)
   }, [])
 
   const hideOffer = useCallback(() => {
-    setPopup(current => current === null || current.kind === 'added' ? current : null)
+    setPopup(null)
   }, [])
 
   const updatePopup = useCallback(() => {
@@ -158,27 +159,17 @@ export function QuoteDock({
     setPopup({ left, top, above, text, kind: 'offer' })
   }, [hideOffer])
 
-  const clampEditorPosition = useCallback((left: number, top: number) => ({
-    left: Math.min(Math.max(left, 12), Math.max(12, window.innerWidth - 276)),
-    top: Math.min(Math.max(top, 8), Math.max(8, window.innerHeight - 200)),
-  }), [])
-
-  /** Recompute every anchored bubble from its live DOM Range. */
+  /** Recompute every numbered badge from its live DOM Range. */
   const updateBubbleRects = useCallback(() => {
-    const next = new Map<number, BubbleRect>()
+    const next = new Map<number, BubbleAnchor>()
+    const viewport = { width: window.innerWidth, height: window.innerHeight }
     for (const [occurrenceId, range] of anchorsRef.current) {
       try {
-        const rects = range.getClientRects()
-        let first: DOMRect | null = null
-        for (let index = 0; index < rects.length; index += 1) {
-          const candidate = rects.item(index)
-          if (candidate !== null && (candidate.width > 0 || candidate.height > 0)) {
-            first = candidate
-            break
-          }
-        }
+        const first = pickFirstClientRect(range.getClientRects())
         if (first === null) continue
-        next.set(occurrenceId, { left: first.left + first.width / 2, top: first.top })
+        const anchor = bubbleAnchorFromRect(first, viewport)
+        if (anchor === null) continue
+        next.set(occurrenceId, anchor)
       } catch {
         // The conversation re-rendered and detached this range; drop the bubble.
       }
@@ -190,10 +181,10 @@ export function QuoteDock({
       if (activeBubble !== undefined) {
         setEditor(current => current === null
           ? null
-          : { ...current, ...clampEditorPosition(activeBubble.left - 132, activeBubble.top + 32) })
+          : { ...current, ...commentEditorPosition(activeBubble, viewport) })
       }
     }
-  }, [clampEditorPosition])
+  }, [])
 
   useEffect(() => {
     const onScroll = () => {
@@ -244,8 +235,8 @@ export function QuoteDock({
     if (changed) updateBubbleRects()
   }, [quotes, updateBubbleRects])
 
-  const showTransient = useCallback((kind: 'added' | 'failed') => {
-    setPopup(current => current === null ? null : { ...current, kind })
+  const showFailed = useCallback(() => {
+    setPopup(current => current === null ? null : { ...current, kind: 'failed' })
     scheduleDismiss()
   }, [scheduleDismiss])
 
@@ -263,7 +254,7 @@ export function QuoteDock({
     if (popup === null || popup.kind !== 'offer') return
     const snapshot = inputRef.current
     if (snapshot.phase !== 'plain') {
-      showTransient('failed')
+      showFailed()
       return
     }
     const normalized = normalizeQuoteText(popup.text, t('quote.truncated'))
@@ -295,14 +286,14 @@ export function QuoteDock({
       draftRev: snapshot.draftRev,
     }
     if (!insertQuote(reference, span)) {
-      showTransient('failed')
+      showFailed()
       return
     }
     pendingAnchorRef.current = anchor
     window.getSelection()?.removeAllRanges()
-    showTransient('added')
+    setPopup(null)
     focusComposerAtEnd()
-  }, [popup, insertQuote, showTransient, hideOffer, focusComposerAtEnd, t])
+  }, [popup, insertQuote, showFailed, hideOffer, focusComposerAtEnd, t])
 
   const closeEditor = useCallback(() => {
     editorIdRef.current = null
@@ -316,13 +307,20 @@ export function QuoteDock({
     editorIdRef.current = occurrenceId
     setCommentDraft(quoteComment(occurrence.ref) ?? '')
     setSaveFailed(false)
+    const viewport = { width: window.innerWidth, height: window.innerHeight }
     const bubble = bubbleRects.get(occurrenceId)
     if (bubble === undefined) {
-      setEditor({ occurrenceId, ...clampEditorPosition(window.innerWidth / 2 - 132, window.innerHeight / 3) })
+      setEditor({
+        occurrenceId,
+        ...commentEditorPosition(
+          { left: viewport.width / 2, top: viewport.height / 3 },
+          viewport,
+        ),
+      })
       return
     }
-    setEditor({ occurrenceId, ...clampEditorPosition(bubble.left - 132, bubble.top + 32) })
-  }, [quotes, bubbleRects, clampEditorPosition])
+    setEditor({ occurrenceId, ...commentEditorPosition(bubble, viewport) })
+  }, [quotes, bubbleRects])
 
   useEffect(() => {
     const closeOnOutsidePointer = (event: PointerEvent) => {
@@ -408,25 +406,25 @@ export function QuoteDock({
     })
   }, [removeQuoteAt])
 
-  const bubbleLayer = quotes.map(quote => {
+  const bubbleLayer = quotes.map((quote, index) => {
     const bubble = bubbleRects.get(quote.occurrenceId)
     if (bubble === undefined) return null
     const hasComment = quoteComment(quote.ref) !== null
+    const label = t('quote.chip', { index: index + 1 })
     return createPortal(
       <button
         type="button"
         className={clsx(css.anchorBubble, hasComment && css.anchorBubbleCommented)}
-        style={{ left: bubble.left, top: bubble.top - 32 }}
+        style={{ left: bubble.left, top: bubble.top }}
         data-dsh-sessions-quote-bubble
-        aria-label={hasComment ? t('quote.bubbleHasComment', { label: quote.label }) : quote.label}
-        title={hasComment ? t('quote.bubbleHasComment', { label: quote.label }) : quote.label}
+        aria-label={hasComment ? t('quote.bubbleHasComment', { label }) : label}
+        title={hasComment ? t('quote.bubbleHasComment', { label }) : label}
         onClick={() => {
           if (editorIdRef.current === quote.occurrenceId) closeEditor()
           else openEditor(quote.occurrenceId)
         }}
       >
-        <QuoteGlyph />
-        <span>{quote.label}</span>
+        <span>{index + 1}</span>
         {hasComment ? <span className={css.anchorBubbleDot} aria-hidden="true" /> : null}
       </button>,
       document.body,
@@ -495,13 +493,7 @@ export function QuoteDock({
         onClick={() => { addQuote() }}
       >
         <QuoteGlyph />
-        <span>
-          {popup.kind === 'added'
-            ? t('quote.added')
-            : popup.kind === 'failed'
-              ? t('quote.failed')
-              : t('quote.button')}
-        </span>
+        <span>{popup.kind === 'failed' ? t('quote.failed') : t('quote.button')}</span>
       </button>
     </div>,
     document.body,
@@ -512,54 +504,69 @@ export function QuoteDock({
       {quotes.length > 0
         ? (
           <section className={css.bar} aria-label={t('quote.count', { count: quotes.length })}>
-            <div className={css.barTitle}>{t('quote.count', { count: quotes.length })}</div>
-            <ul className={css.list}>
-              {quotes.map(quote => {
-                const isOpen = expanded.has(quote.occurrenceId)
-                const comment = quoteComment(quote.ref)
-                return (
-                  <li key={quote.occurrenceId} className={css.item}>
-                    <div className={css.row}>
-                      <button
-                        type="button"
-                        className={css.toggle}
-                        aria-expanded={isOpen}
-                        aria-label={t(isOpen ? 'quote.collapse' : 'quote.expand')}
-                        onClick={() => { toggleExpanded(quote.occurrenceId) }}
-                      >
-                        <span className={css.chipLabel}>{quote.label}</span>
-                        <span className={css.preview}>{quotePreview(quote.ref, quote.label)}</span>
-                        <IconChevronDownOutline14 className={clsx(css.chevron, isOpen && css.chevronOpen)} />
-                      </button>
-                      <button
-                        type="button"
-                        className={css.remove}
-                        disabled={input.phase !== 'plain'}
-                        aria-label={t('quote.remove', { label: quote.label })}
-                        onClick={() => { removeQuote(quote.occurrenceId, quote.offset) }}
-                      >
-                        <IconCloseOutline16 />
-                      </button>
-                    </div>
-                    {isOpen
-                      ? (
-                        <>
-                          <pre className={css.body}>{quoteFullText(quote.ref) ?? quote.label}</pre>
-                          {comment !== null
-                            ? (
-                              <div className={css.commentBox}>
-                                <div className={css.commentLabel}>{t('quote.commentLabel')}</div>
-                                <pre className={css.commentBody}>{comment}</pre>
-                              </div>
-                            )
-                            : null}
-                        </>
-                      )
-                      : null}
-                  </li>
-                )
-              })}
-            </ul>
+            <button
+              type="button"
+              className={css.countChip}
+              aria-expanded={barOpen}
+              title={t(barOpen ? 'quote.collapseBar' : 'quote.expandBar')}
+              onClick={() => { setBarOpen(open => !open) }}
+            >
+              <IconQueueOutline14 className={css.countIcon} />
+              <span>{t('quote.count', { count: quotes.length })}</span>
+              <IconChevronDownOutline14 className={clsx(css.chevron, barOpen && css.chevronOpen)} />
+            </button>
+            {barOpen
+              ? (
+                <ul className={css.list}>
+                  {quotes.map((quote, index) => {
+                    const isOpen = expanded.has(quote.occurrenceId)
+                    const comment = quoteComment(quote.ref)
+                    const label = t('quote.chip', { index: index + 1 })
+                    return (
+                      <li key={quote.occurrenceId} className={css.item}>
+                        <div className={css.row}>
+                          <button
+                            type="button"
+                            className={css.toggle}
+                            aria-expanded={isOpen}
+                            aria-label={t(isOpen ? 'quote.collapse' : 'quote.expand')}
+                            onClick={() => { toggleExpanded(quote.occurrenceId) }}
+                          >
+                            <span className={css.chipIndex}>{index + 1}</span>
+                            <span className={css.preview}>{quotePreview(quote.ref, label)}</span>
+                            <IconChevronDownOutline14 className={clsx(css.chevron, isOpen && css.chevronOpen)} />
+                          </button>
+                          <button
+                            type="button"
+                            className={css.remove}
+                            disabled={input.phase !== 'plain'}
+                            aria-label={t('quote.remove', { label })}
+                            onClick={() => { removeQuote(quote.occurrenceId, quote.offset) }}
+                          >
+                            <IconCloseOutline16 />
+                          </button>
+                        </div>
+                        {isOpen
+                          ? (
+                            <>
+                              <pre className={css.body}>{quoteFullText(quote.ref) ?? label}</pre>
+                              {comment !== null
+                                ? (
+                                  <div className={css.commentBox}>
+                                    <div className={css.commentLabel}>{t('quote.commentLabel')}</div>
+                                    <pre className={css.commentBody}>{comment}</pre>
+                                  </div>
+                                )
+                                : null}
+                            </>
+                          )
+                          : null}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )
+              : null}
           </section>
         )
         : null}

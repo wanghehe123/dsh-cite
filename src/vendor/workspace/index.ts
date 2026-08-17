@@ -81,6 +81,11 @@ export function registerWorkspaceSurface(ctx: ClientContext): void {
         })
     },
     renameWorkspace: async (workspaceId, title) => { await ctx.workspaces.rename(workspaceId, title) },
+    revealWorkspace: (workspaceId) => {
+      const workspace = ctx.workspaces.list.getSnapshot().items.find(item => item.workspaceId === workspaceId)
+      if (workspace === undefined) return
+      ctx.workspaces.openPath(workspace.path).catch(() => {})
+    },
     deleteWorkspace: async (workspaceId) => { await ctx.workspaces.delete(workspaceId) },
     insertWorkspaceBefore: async (workspaceId, beforeWorkspaceId) => {
       await ctx.workspaces.insertBefore(workspaceId, beforeWorkspaceId)

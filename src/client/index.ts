@@ -1,8 +1,7 @@
 /**
- * dsh-sessions browser half: vendored workspace surface with copy-session-id,
- * the `@session` input-trigger source, the quote-capture surface in the
- * composer, and the plugin configuration card on the Web Plugins settings
- * page.
+ * dsh-cite browser half: vendored workspace surface with copy-session-id,
+ * the `@session` input-trigger source, in-chat quote-and-comment capture,
+ * produced-file cards, and the Cite settings card on the Web Plugins page.
  */
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -15,10 +14,11 @@ import { QuoteDock, type QuoteDockInjected } from './QuoteDock.tsx'
 import { createQuoteSource } from './quote-source.ts'
 import { ScopeCard, type ScopeCardInjected } from './ScopeCard.tsx'
 import { createSessionMentionSource } from './session-mention-source.ts'
+import { registerArtifacts } from './deliverables.ts'
 import { registerWorkspaceSurface } from '../vendor/workspace/index.ts'
 
 /** Required client services: locale, session/workspace feeds, triggers, slots. */
-export const inject = ['sessions', 'workspaces', 'locale', 'inputTriggers', 'slots', 'conversation']
+export const inject = ['sessions', 'workspaces', 'locale', 'inputTriggers', 'slots', 'conversationEvents', 'conversation']
 
 /**
  * Register the vendored workspace surface, session mention source, quote
@@ -28,6 +28,7 @@ export const inject = ['sessions', 'workspaces', 'locale', 'inputTriggers', 'slo
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-sessions: dictionaries')
   registerWorkspaceSurface(ctx)
+  registerArtifacts(ctx)
 
   ctx.effect(() => {
     const unregister = ctx.inputTriggers.registerSource(createSessionMentionSource(ctx))

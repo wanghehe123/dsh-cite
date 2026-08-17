@@ -1,6 +1,6 @@
 {
-  "name": "@wishp3/dsh-sessions",
-  "description": "DeepSeek Harness (DSH) Web UI plugin: cross-session @ mentions, bare session-id references, copy-session-id row actions, and Codex-style selection quote-to-composer",
+  "name": "@wishp3/dsh-cite",
+  "description": "Cite what matters in DeepSeek Harness: @ a past session, quote earlier messages with comments, and open the files this turn just wrote.",
   "version": "0.2.0",
   "publishConfig": {
     "access": "public"
@@ -53,7 +53,8 @@
         "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-input-trigger",
-        "@deepseek-ai/dsh-client-ui-settings-plugins"
+        "@deepseek-ai/dsh-client-ui-settings-plugins",
+        "@deepseek-ai/dsh-client-ui-conversation"
       ]
     }
   },

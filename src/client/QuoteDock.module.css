@@ -1,48 +1,73 @@
-/* Codex-style quote capture: the selection popover and the quote bar above
-   the composer. Colors ride the shipped dsh theme variables so the surface
-   matches the built-in composer chrome in both themes. */
+/* Codex-style quote capture: numbered badges on the quoted line, a compact
+   comment-count chip above the composer, and the selection popover. Colors
+   ride the shipped dsh theme variables so the surface matches the built-in
+   composer chrome in both themes. */
 
 .bar {
   box-sizing: border-box;
   width: 100%;
   max-width: var(--dsh-composer-card-max-width);
-  margin: 0 auto 8px;
-  padding: 8px;
+  margin: 0 auto 6px;
+  padding: 0;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 6px;
-  border: 1px solid var(--dsw-alias-border-l2-darkmode-thin);
-  border-radius: 14px;
-  background: var(--dsw-alias-bg-layer-2);
-  box-shadow: var(--dsw-shadow-lv1);
 }
 
-.barTitle {
-  padding: 0 6px;
+.countChip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
   font-size: 12px;
-  line-height: 18px;
+  line-height: 28px;
+  cursor: pointer;
+}
+
+.countChip:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.countChip:focus-visible {
+  outline: 2px solid var(--dsw-alias-brand-primary);
+  outline-offset: 2px;
+}
+
+.countIcon {
+  flex: none;
   color: var(--dsw-alias-label-tertiary);
 }
 
 .list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 4px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-layer-2);
 }
 
 .item {
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 10px;
-  background: var(--dsw-alias-bg-layer-3);
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
 }
 
 .row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -52,14 +77,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 5px 8px;
   border: 0;
   background: none;
   font: inherit;
   color: inherit;
   text-align: left;
   cursor: pointer;
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .toggle:hover {
@@ -72,14 +97,17 @@
   outline-offset: -2px;
 }
 
-.chipLabel {
+.chipIndex {
   flex: none;
-  padding: 0 8px;
-  border-radius: 6px;
-  font-size: 12px;
-  line-height: 20px;
-  white-space: nowrap;
-  background: var(--dsw-alias-interactive-bg-hover);
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 22%, transparent);
   color: var(--dsw-alias-state-business-primary);
 }
 
@@ -106,8 +134,8 @@
 
 .remove {
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   margin-right: 4px;
   padding: 0;
   display: grid;
@@ -174,39 +202,26 @@
 .anchorBubble {
   position: fixed;
   z-index: 131;
-  transform: translate(-50%, -100%);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: 999px;
-  background: var(--dsw-alias-button-floating-fill);
-  box-shadow: var(--dsw-shadow-lv2);
-  color: var(--dsw-alias-state-business-primary);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 26px;
-  white-space: nowrap;
+  transform: translateY(-50%);
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--dsw-alias-state-business-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--dsw-alias-state-business-primary) 45%, transparent);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
   cursor: pointer;
 }
 
-.anchorBubble::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: -5px;
-  width: 8px;
-  height: 8px;
-  transform: translateX(-50%) rotate(45deg);
-  background: inherit;
-  border-right: 1px solid var(--dsw-alias-border-l2);
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
-}
-
 .anchorBubble:hover {
-  background: var(--dsw-alias-button-floating-hover);
+  filter: brightness(1.08);
 }
 
 .anchorBubble:focus-visible {
@@ -215,18 +230,20 @@
 }
 
 .anchorBubbleCommented {
-  border-color: var(--dsw-alias-state-business-primary);
-}
-
-.anchorBubbleCommented::after {
-  border-color: var(--dsw-alias-state-business-primary);
+  box-shadow:
+    0 1px 3px color-mix(in srgb, var(--dsw-alias-state-business-primary) 45%, transparent),
+    0 0 0 1.5px var(--dsw-alias-state-business-primary);
 }
 
 .anchorBubbleDot {
+  position: absolute;
+  top: -1px;
+  right: -1px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--dsw-alias-state-business-primary);
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: 0 0 0 1.5px var(--dsw-alias-state-business-primary);
 }
 
 .commentEditor {

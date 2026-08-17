@@ -1,4 +1,4 @@
-# dsh-sessions bundle layer: mounts the official cross-session reference
+# dsh-cite bundle layer: mounts the official cross-session reference
 # service, disables the shipped workspace browser, and installs this plugin's
 # host/browser halves.
 
@@ -20,7 +20,7 @@
     # The same package declares dsh.client, so the web loader serves the
     # browser half from this row automatically.
     - id: session-bridge
-      name: '@wishp3/dsh-sessions'
+      name: '@wishp3/dsh-cite'
       config:
         # Reference universe: same workspace (default) or every visible session.
         scope: workspace
